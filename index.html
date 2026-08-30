@@ -5,6 +5,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Yapı360 | İnşaat Yönetim Platformu</title>
+ <link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#172c52">
+<meta name="application-name" content="Yapı360">
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
 .login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#101d36,#263b63)}
@@ -97,5 +100,38 @@ function giris(){
  }
 }
 </script>
+ <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js");
+  });
+}
+</script>
 </body>
 </html>
+<button class="btn" id="installBtn" style="display:none;background:#d6a843;color:#172033">
+  Yapı360’ı Uygulama Olarak Yükle
+</button>
+let deferredPrompt;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById("installBtn");
+  if (btn) btn.style.display = "block";
+});
+
+document.addEventListener("click", async (e) => {
+  if (e.target && e.target.id === "installBtn") {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    e.target.style.display = "none";
+  }
+});
+
+window.addEventListener("appinstalled", () => {
+  const btn = document.getElementById("installBtn");
+  if (btn) btn.style.display = "none";
+});
