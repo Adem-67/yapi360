@@ -1,1 +1,101 @@
 
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yapı360 | İnşaat Yönetim Platformu</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#101d36,#263b63)}
+.card{width:420px;background:white;border-radius:18px;padding:36px;box-shadow:0 25px 70px #0004}
+.logo{font-size:34px;font-weight:800;color:#172c52}.logo span{color:#d6a843}
+.sub{color:#718096;margin:8px 0 28px}.input{width:100%;padding:14px;margin:7px 0;border:1px solid #dce3ed;border-radius:10px;font-size:15px}
+.btn{width:100%;padding:14px;margin-top:15px;border:0;border-radius:10px;background:#172c52;color:white;font-size:16px;font-weight:bold;cursor:pointer}
+.demo{margin-top:18px;padding:13px;background:#f6f8fb;border-radius:10px;font-size:13px;color:#657086}
+.app{display:none}.side{position:fixed;width:245px;height:100vh;background:#13223e;color:white;padding:26px 18px}
+.side h2{margin:0 0 32px;font-size:27px}.side h2 span{color:#d6a843}
+.side div{padding:12px;border-radius:8px;margin:3px 0;color:#d8e0ec;cursor:pointer}.side div:hover,.side .active{background:#263958;color:white}
+.main{margin-left:245px;padding:30px}.top{display:flex;justify-content:space-between;align-items:center}.top h1{margin:0}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:28px}
+.stat,.panel{background:white;border:1px solid #e4e9f0;border-radius:14px;padding:20px;box-shadow:0 3px 12px #14213d0b}
+.stat small{color:#7a8597}.stat strong{display:block;font-size:25px;margin-top:9px}
+.panels{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-top:18px}.panel h3{margin-top:0}
+.row{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #edf0f5}
+.badge{background:#eaf8ef;color:#23804a;padding:5px 9px;border-radius:20px;font-size:12px}
+@media(max-width:900px){.side{width:75px}.side div{font-size:0}.side h2{font-size:16px}.main{margin-left:75px}.grid{grid-template-columns:1fr 1fr}.panels{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<section class="login" id="login">
+<div class="card">
+<div class="logo">Yapı<span>360</span></div>
+<div class="sub">İnşaat Proje ve Satış Yönetim Platformu</div>
+<input class="input" id="email" placeholder="E-posta" value="admin@yapi360.demo">
+<input class="input" id="pass" type="password" placeholder="Şifre" value="123456">
+<button class="btn" onclick="giris()">Giriş Yap</button>
+<div class="demo">Demo hesap<br><b>admin@yapi360.demo</b><br>Şifre: <b>123456</b></div>
+</div>
+</section>
+
+<section class="app" id="app">
+<aside class="side">
+<h2>Yapı<span>360</span></h2>
+<div class="active">▦ Dashboard</div>
+<div>▣ Projeler</div>
+<div>▤ Sözleşmeler</div>
+<div>▥ Şantiye</div>
+<div>◫ Taşeronlar</div>
+<div>₺ Hakedişler</div>
+<div>▧ Satın Alma</div>
+<div>▦ Depo / Stok</div>
+<div>⌂ Bağımsız Bölümler</div>
+<div>♙ CRM</div>
+<div>₺ Satış & Tahsilat</div>
+<div>▤ Raporlar</div>
+<div>⚙ Ayarlar</div>
+</aside>
+
+<main class="main">
+<div class="top">
+<div><small>YÖNETİCİ PANELİ</small><h1>Genel Bakış</h1></div>
+<div>Demo İnşaat A.Ş. &nbsp; ● Admin</div>
+</div>
+
+<div class="grid">
+<div class="stat"><small>AKTİF PROJE</small><strong>4</strong></div>
+<div class="stat"><small>TOPLAM SATIŞ</small><strong>₺128,4 Mn</strong></div>
+<div class="stat"><small>TAHSİLAT</small><strong>₺91,2 Mn</strong></div>
+<div class="stat"><small>ORT. İLERLEME</small><strong>%57</strong></div>
+</div>
+
+<div class="panels">
+<div class="panel">
+<h3>Aktif Projeler</h3>
+<div class="row"><span>Şamlar Residence</span><span class="badge">%68</span></div>
+<div class="row"><span>Kayaşehir Park</span><span class="badge">%52</span></div>
+<div class="row"><span>Kartal Sahil</span><span class="badge">%41</span></div>
+<div class="row"><span>Tuzla Karma</span><span class="badge">%67</span></div>
+</div>
+<div class="panel">
+<h3>Satış Özeti</h3>
+<div class="row"><span>Toplam Ünite</span><b>186</b></div>
+<div class="row"><span>Satılan</span><b>104</b></div>
+<div class="row"><span>Rezerve</span><b>17</b></div>
+<div class="row"><span>Satışta</span><b>65</b></div>
+</div>
+</div>
+</main>
+</section>
+
+<script>
+function giris(){
+ if(document.getElementById('email').value && document.getElementById('pass').value){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+ }
+}
+</script>
+</body>
+</html>
