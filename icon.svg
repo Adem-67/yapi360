@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#172c52"/>
+  <path d="M80 390V238h62v152H80zm86 0V174h70v216h-70zm94 0V214h70v176h-70zm94 0V140h78v250h-78z" fill="#ffffff"/>
+  <path d="M72 390h368v28H72z" fill="#d6a843"/>
+  <path d="M114 205h250v18H114z" fill="#d6a843"/>
+  <path d="M345 104h20v119h-20z" fill="#d6a843"/>
+  <path d="M355 104h96v15h-96z" fill="#d6a843"/>
+  <path d="M435 113v66h-13v-66z" fill="#d6a843"/>
+  <path d="M422 179h27l-14 24z" fill="#d6a843"/>
+  <text x="256" y="468"
+        text-anchor="middle"
+        font-family="Arial, sans-serif"
+        font-size="50"
+        font-weight="700"
+        fill="#ffffff">Yapı360</text>
+</svg>
