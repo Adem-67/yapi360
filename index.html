@@ -1,157 +1,64 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Yapı360 | İnşaat Yönetim Platformu</title>
- <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#172c52">
-<meta name="application-name" content="Yapı360">
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
-.login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#101d36,#263b63)}
-.card{width:420px;background:white;border-radius:18px;padding:36px;box-shadow:0 25px 70px #0004}
-.logo{font-size:34px;font-weight:800;color:#172c52}.logo span{color:#d6a843}
-.sub{color:#718096;margin:8px 0 28px}.input{width:100%;padding:14px;margin:7px 0;border:1px solid #dce3ed;border-radius:10px;font-size:15px}
-.btn{width:100%;padding:14px;margin-top:15px;border:0;border-radius:10px;background:#172c52;color:white;font-size:16px;font-weight:bold;cursor:pointer}
-.demo{margin-top:18px;padding:13px;background:#f6f8fb;border-radius:10px;font-size:13px;color:#657086}
-.app{display:none}.side{position:fixed;width:245px;height:100vh;background:#13223e;color:white;padding:26px 18px}
-.side h2{margin:0 0 32px;font-size:27px}.side h2 span{color:#d6a843}
-.side div{padding:12px;border-radius:8px;margin:3px 0;color:#d8e0ec;cursor:pointer}.side div:hover,.side .active{background:#263958;color:white}
-.main{margin-left:245px;padding:30px}.top{display:flex;justify-content:space-between;align-items:center}.top h1{margin:0}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:28px}
-.stat,.panel{background:white;border:1px solid #e4e9f0;border-radius:14px;padding:20px;box-shadow:0 3px 12px #14213d0b}
-.stat small{color:#7a8597}.stat strong{display:block;font-size:25px;margin-top:9px}
-.panels{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-top:18px}.panel h3{margin-top:0}
-.row{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #edf0f5}
-.badge{background:#eaf8ef;color:#23804a;padding:5px 9px;border-radius:20px;font-size:12px}
-@media(max-width:900px){.side{width:75px}.side div{font-size:0}.side h2{font-size:16px}.main{margin-left:75px}.grid{grid-template-columns:1fr 1fr}.panels{grid-template-columns:1fr}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="İnşaat proje, şantiye, satış ve finans yönetim platformu">
+  <meta name="theme-color" content="#172c52">
+  <meta name="application-name" content="Yapı360">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Yapı360">
+  <title>Yapı360 | İnşaat Yönetim Platformu</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+  <section class="login" id="login">
+    <form class="login-card" id="loginForm">
+      <div class="logo">Yapı<span>360</span></div>
+      <div class="sub">İnşaat Proje ve Satış Yönetim Platformu</div>
+      <div class="field"><label for="email">E-posta</label><input class="input" id="email" type="email" autocomplete="username" value="admin@yapi360.demo" required></div>
+      <div class="field"><label for="pass">Şifre</label><input class="input" id="pass" type="password" autocomplete="current-password" value="123456" required></div>
+      <button class="btn block" type="submit">Giriş Yap</button>
+      <div class="error" id="loginError" role="alert"></div>
+      <div class="demo">Demo hesap<br><b>admin@yapi360.demo</b><br>Şifre: <b>123456</b></div>
+    </form>
+  </section>
 
-<section class="login" id="login">
-<div class="card">
-<div class="logo">Yapı<span>360</span></div>
-<div class="sub">İnşaat Proje ve Satış Yönetim Platformu</div>
-<input class="input" id="email" placeholder="E-posta" value="admin@yapi360.demo">
-<input class="input" id="pass" type="password" placeholder="Şifre" value="123456">
-<button class="btn" onclick="giris()">Giriş Yap</button>
-<div class="demo">Demo hesap<br><b>admin@yapi360.demo</b><br>Şifre: <b>123456</b></div>
-</div>
-</section>
+  <section class="app" id="app">
+    <aside class="side" id="sidebar" aria-label="Ana menü">
+      <h2>Yapı<span>360</span></h2>
+      <nav id="nav"></nav>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <div class="top-actions">
+          <button class="btn ghost mobile-toggle" id="menuToggle" aria-label="Menüyü aç">☰</button>
+          <div><div class="eyebrow">YÖNETİCİ PANELİ</div><h1 id="pageTitle">Genel Bakış</h1></div>
+        </div>
+        <div class="top-actions">
+          <button class="btn gold install" id="installBtn">Uygulamayı Yükle</button>
+          <span class="company">Demo İnşaat A.Ş. · Admin</span>
+          <button class="btn ghost" id="logoutBtn">Çıkış</button>
+        </div>
+      </header>
+      <p class="page-description" id="pageDescription"></p>
+      <div class="content" id="content" aria-live="polite"></div>
+    </main>
+  </section>
 
-<section class="app" id="app">
-<aside class="side">
-<h2>Yapı<span>360</span></h2>
-<div class="active" data-page="dashboard">▦ Dashboard</div>
-<div data-page="projeler">▣ Projeler</div>
-<div data-page="sozlesmeler">▤ Sözleşmeler</div>
-<div data-page="santiye">▥ Şantiye</div>
-<div data-page="taseronlar">▧ Taşeronlar</div>
-<div data-page="hakedisler">₺ Hakedişler</div>
-<div data-page="satinalma">▨ Satın Alma</div>
-<div data-page="depo">▦ Depo / Stok</div>
-<div data-page="bagimsiz">⌂ Bağımsız Bölümler</div>
-<div data-page="crm">♙ CRM</div>
-<div data-page="satis">₺ Satış & Tahsilat</div>
-<div data-page="raporlar">▤ Raporlar</div>
-<div data-page="ayarlar">⚙ Ayarlar</div>
-</aside>
+  <div class="modal" id="recordModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <form class="modal-card" id="recordForm">
+      <div class="modal-head"><h2 id="modalTitle">Yeni Kayıt</h2><button type="button" class="close" id="closeModal" aria-label="Kapat">×</button></div>
+      <div class="form-grid" id="recordFields"></div>
+      <button class="btn block" type="submit">Kaydet</button>
+    </form>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
 
-<main class="main">
-<div class="top">
-<div><small>YÖNETİCİ PANELİ</small><h1>Genel Bakış</h1></div>
-<div>Demo İnşaat A.Ş. &nbsp; ● Admin</div>
-</div>
-
-<div class="grid">
-<div class="stat"><small>AKTİF PROJE</small><strong>4</strong></div>
-<div class="stat"><small>TOPLAM SATIŞ</small><strong>₺128,4 Mn</strong></div>
-<div class="stat"><small>TAHSİLAT</small><strong>₺91,2 Mn</strong></div>
-<div class="stat"><small>ORT. İLERLEME</small><strong>%57</strong></div>
-</div>
-
-<div class="panels">
-<div class="panel">
-<h3>Aktif Projeler</h3>
-<div class="row"><span>Şamlar Residence</span><span class="badge">%68</span></div>
-<div class="row"><span>Kayaşehir Park</span><span class="badge">%52</span></div>
-<div class="row"><span>Kartal Sahil</span><span class="badge">%41</span></div>
-<div class="row"><span>Tuzla Karma</span><span class="badge">%67</span></div>
-</div>
-<div class="panel">
-<h3>Satış Özeti</h3>
-<div class="row"><span>Toplam Ünite</span><b>186</b></div>
-<div class="row"><span>Satılan</span><b>104</b></div>
-<div class="row"><span>Rezerve</span><b>17</b></div>
-<div class="row"><span>Satışta</span><b>65</b></div>
-</div>
-</div>
-</main>
-</section>
-
-<script>
-function giris(){
- if(document.getElementById('email').value && document.getElementById('pass').value){
-  document.getElementById('login').style.display='none';
-  document.getElementById('app').style.display='block';
- }
-}
-</script>
- <script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("/sw.js");
-  });
-}
-</script>
-
-
-<button class="btn" id="installBtn" style="display:none;background:#d6a843;color:#172033">
-  Yapı360’ı Uygulama Olarak Yükle
-</button>
- <script>
-let deferredPrompt;
-
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  const btn = document.getElementById("installBtn");
-  if (btn) btn.style.display = "block";
-});
-
-document.addEventListener("click", async (e) => {
-  if (e.target && e.target.id === "installBtn") {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    e.target.style.display = "none";
-  }
-});
-const menuItems = document.querySelectorAll("#side [data-page]");
-const pageTitle = document.querySelector(".top h1");
-
-menuItems.forEach((item) => {
-  item.addEventListener("click", () => {
-    menuItems.forEach((el) => el.classList.remove("active"));
-    item.classList.add("active");
-
-    const page = item.dataset.page;
-    const title = item.textContent.replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü]+/, "").trim();
-
-    if (pageTitle) {
-      pageTitle.textContent = title;
-    }
-
-    console.log("Açılan bölüm:", page);
-  });
-});
-window.addEventListener("appinstalled", () => {
-  const btn = document.getElementById("installBtn");
-  if (btn) btn.style.display = "none";
-});</script>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
