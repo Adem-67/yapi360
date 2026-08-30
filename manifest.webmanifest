@@ -1,0 +1,12 @@
+{
+  "name": "Yapı360 - İnşaat Yönetim Platformu",
+  "short_name": "Yapı360",
+  "description": "İnşaat proje, sözleşme, şantiye, maliyet, satış ve tahsilat yönetim platformu",
+  "lang": "tr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101d36",
+  "theme_color": "#172c52"
+}
