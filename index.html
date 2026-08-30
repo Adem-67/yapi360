@@ -45,19 +45,19 @@
 <section class="app" id="app">
 <aside class="side">
 <h2>Yapı<span>360</span></h2>
-<div class="active">▦ Dashboard</div>
-<div>▣ Projeler</div>
-<div>▤ Sözleşmeler</div>
-<div>▥ Şantiye</div>
-<div>◫ Taşeronlar</div>
-<div>₺ Hakedişler</div>
-<div>▧ Satın Alma</div>
-<div>▦ Depo / Stok</div>
-<div>⌂ Bağımsız Bölümler</div>
-<div>♙ CRM</div>
-<div>₺ Satış & Tahsilat</div>
-<div>▤ Raporlar</div>
-<div>⚙ Ayarlar</div>
+<div class="active" data-page="dashboard">▦ Dashboard</div>
+<div data-page="projeler">▣ Projeler</div>
+<div data-page="sozlesmeler">▤ Sözleşmeler</div>
+<div data-page="santiye">▥ Şantiye</div>
+<div data-page="taseronlar">▧ Taşeronlar</div>
+<div data-page="hakedisler">₺ Hakedişler</div>
+<div data-page="satinalma">▨ Satın Alma</div>
+<div data-page="depo">▦ Depo / Stok</div>
+<div data-page="bagimsiz">⌂ Bağımsız Bölümler</div>
+<div data-page="crm">♙ CRM</div>
+<div data-page="satis">₺ Satış & Tahsilat</div>
+<div data-page="raporlar">▤ Raporlar</div>
+<div data-page="ayarlar">⚙ Ayarlar</div>
 </aside>
 
 <main class="main">
@@ -131,7 +131,24 @@ document.addEventListener("click", async (e) => {
     e.target.style.display = "none";
   }
 });
+const menuItems = document.querySelectorAll("#side [data-page]");
+const pageTitle = document.querySelector(".top h1");
 
+menuItems.forEach((item) => {
+  item.addEventListener("click", () => {
+    menuItems.forEach((el) => el.classList.remove("active"));
+    item.classList.add("active");
+
+    const page = item.dataset.page;
+    const title = item.textContent.replace(/^[^A-Za-zÇĞİÖŞÜçğıöşü]+/, "").trim();
+
+    if (pageTitle) {
+      pageTitle.textContent = title;
+    }
+
+    console.log("Açılan bölüm:", page);
+  });
+});
 window.addEventListener("appinstalled", () => {
   const btn = document.getElementById("installBtn");
   if (btn) btn.style.display = "none";
