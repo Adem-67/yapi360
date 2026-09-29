@@ -13,9 +13,9 @@ const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
 const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "sites", "staff", "inventory"]);
 const REFERENCE_FIELDS = {
   contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"] },
-  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"] },
-  sites: { staff: ["site"], assets: ["site"], warehouse: ["site"] },
-  staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"] },
+  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"] },
+  sites: { assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"] },
+  staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"] },
   inventory: { purchases: ["item"], warehouse: ["itemName"] },
   subcontractors: { warehouse: ["subcontractor"] }
 };
@@ -199,6 +199,7 @@ function renderPage() {
   if (special === "dashboard") $("#content").innerHTML = renderDashboard();
   else if (special === "contactLedger") $("#content").innerHTML = renderContactLedger();
   else if (special === "staffLedger") $("#content").innerHTML = renderStaffLedger();
+  else if (special === "staffAssignmentReport") $("#content").innerHTML = renderStaffAssignmentReport();
   else if (special === "costAnalysis") $("#content").innerHTML = renderCostAnalysis();
   else if (special === "warehouseReport") $("#content").innerHTML = renderWarehouseReport();
   else if (special === "timesheets") $("#content").innerHTML = renderTimesheets();
@@ -276,6 +277,7 @@ function renderList(section, sourceRows) {
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
     ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
+    ${state.page === "staff" ? '<div class="callout">Personel kartı özlük ve ücret bilgisidir. Çalışacağı proje ve şantiyeleri tarih aralığıyla Personel Görevlendirme sekmesinden kaydedin.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
     ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
     <div class="toolbar">
@@ -366,6 +368,15 @@ function renderStaffLedger() {
   return reportTable(["Personel", "Görev", "Aylık Ücret", "Maaş Ödemesi", "Avans", "Kalan"], rows, "Maaş ve avans ödeme fişleri personel kartıyla ilişkilendirilir.");
 }
 
+function renderStaffAssignmentReport() {
+  const rows = [...records("staff_assignments")].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+  return reportTable(
+    ["Personel", "Proje", "Şantiye", "Görev / Ekip", "Başlangıç", "Bitiş", "Durum"],
+    rows.map(item => [item.staffName, item.project, item.site, item.duty, formatDate(item.startDate), formatDate(item.endDate), item.status]),
+    "Personel kartı bağımsızdır; proje ve şantiye çalışma geçmişi tarih aralıklı görevlendirme kayıtlarından oluşur."
+  );
+}
+
 function timesheetPeriodBounds(period) {
   const [year, month] = period.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
@@ -374,6 +385,23 @@ function timesheetPeriodBounds(period) {
 
 function timesheetOption(value, current, label = value) {
   return `<option value="${value}" ${String(value) === String(current) ? "selected" : ""}>${label}</option>`;
+}
+
+function assignmentActiveOnDate(assignment, date) {
+  return assignment.startDate <= date && (!assignment.endDate || assignment.endDate >= date);
+}
+
+function staffAssignmentsOnDate(staffId, date) {
+  return records("staff_assignments").filter(item => item.staffId === staffId && assignmentActiveOnDate(item, date));
+}
+
+function timesheetAssignmentOptions(person, date, entry) {
+  const assignments = staffAssignmentsOnDate(person.id, date);
+  const selected = entry.assignmentId || (assignments.length === 1 ? assignments[0].id : "");
+  const legacy = entry.assignmentId && !assignments.some(item => item.id === entry.assignmentId)
+    ? `<option value="${entry.assignmentId}" selected>${escapeHtml((entry.project || "Eski proje") + " · " + (entry.site || "Eski şantiye"))}</option>` : "";
+  const options = assignments.map(item => `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(item.project + " · " + item.site + (item.duty ? " · " + item.duty : ""))}</option>`).join("");
+  return `<option value="" ${selected ? "" : "selected"}>Görevlendirme yok</option>${legacy}${options}`;
 }
 
 function renderTimesheets() {
@@ -391,6 +419,7 @@ function renderTimesheets() {
     const dailyAmount = number(person.monthlySalary) / 30 * number(multiplier);
     return `<tr data-staff-id="${person.id}">
       <td><strong>${escapeHtml(person.name)}</strong><small class="cell-note">${escapeHtml(person.role || "—")}</small></td>
+      <td><select class="select compact assignment-select" data-timesheet-assignment>${timesheetAssignmentOptions(person, date, entry)}</select></td>
       <td><select class="select compact" data-timesheet-status>
         ${timesheetOption("", entry.status || "", "Seçilmedi")}
         ${timesheetOption("Tam Gün", entry.status)}
@@ -417,21 +446,22 @@ function renderTimesheets() {
     const leave = entries.filter(item => item.status === "İzinli").length;
     const wages = entries.reduce((sum, item) => sum + number(item.wageMultiplier), 0);
     const amount = number(person.monthlySalary) / 30 * wages;
-    return `<tr><td>${escapeHtml(person.name)}</td><td>${full}</td><td>${half}</td><td>${leave}</td><td>${wages.toLocaleString("tr-TR")}</td><td>${money.format(amount)}</td></tr>`;
+    const sites = [...new Set(entries.map(item => item.site).filter(Boolean))].join(", ") || "—";
+    return `<tr><td>${escapeHtml(person.name)}</td><td>${escapeHtml(sites)}</td><td>${full}</td><td>${half}</td><td>${leave}</td><td>${wages.toLocaleString("tr-TR")}</td><td>${money.format(amount)}</td></tr>`;
   }).filter(Boolean).join("");
 
   return `
-    <div class="callout">Puantaj kayıtları tarih ve ay dönemine göre saklanır. Günlük çalışma durumu ile yevmiye çarpanı birbirinden bağımsızdır; tam çalışan personele gerektiğinde 2 yevmiye seçebilirsiniz.</div>
+    <div class="callout">Puantajdaki proje ve şantiye seçenekleri, seçilen tarihte geçerli personel görevlendirmelerinden gelir. Çalışılan günlerde görevlendirme seçimi zorunludur; izin kaydı görevlendirmesiz tutulabilir.</div>
     <div class="timesheet-toolbar panel">
       <div class="field"><label for="timesheetPeriod">Dönem</label><input class="input" id="timesheetPeriod" type="month" value="${period}"></div>
       <div class="field"><label for="timesheetDate">Puantaj günü</label><input class="input" id="timesheetDate" type="date" min="${bounds.min}" max="${bounds.max}" value="${date}"></div>
       <div class="timesheet-actions">${canEdit() ? '<button class="btn gold" id="saveTimesheetDay">Günü Kaydet</button>' : ""}<button class="btn ghost" id="exportTimesheet">Dönem CSV</button></div>
     </div>
-    <div class="table-wrap"><table class="table timesheet-table"><thead><tr><th>Personel</th><th>Çalışma</th><th>Yevmiye</th><th>Günlük Tutar</th><th>Açıklama</th></tr></thead><tbody id="timesheetRows">
-      ${dailyRows || `<tr><td colspan="5">${emptyMessage("Puantaj oluşturmak için önce aktif personel kaydı ekleyin.")}</td></tr>`}
+    <div class="table-wrap"><table class="table timesheet-table"><thead><tr><th>Personel</th><th>Görevlendirme / Şantiye</th><th>Çalışma</th><th>Yevmiye</th><th>Günlük Tutar</th><th>Açıklama</th></tr></thead><tbody id="timesheetRows">
+      ${dailyRows || `<tr><td colspan="6">${emptyMessage("Puantaj oluşturmak için önce aktif personel kaydı ekleyin.")}</td></tr>`}
     </tbody></table></div>
     <div class="panel timesheet-summary"><div class="panel-head"><h3>${escapeHtml(period)} Dönem Özeti</h3><span class="badge info">${periodEntries.length} günlük kayıt</span></div>
-      <div class="table-wrap embedded"><table class="table"><thead><tr><th>Personel</th><th>Tam Gün</th><th>Yarım Gün</th><th>İzinli</th><th>Yevmiye</th><th>Hesaplanan</th></tr></thead><tbody>${summaryRows || '<tr><td colspan="6" class="empty">Bu dönemde kayıt yok.</td></tr>'}</tbody></table></div>
+      <div class="table-wrap embedded"><table class="table"><thead><tr><th>Personel</th><th>Çalışılan Şantiyeler</th><th>Tam Gün</th><th>Yarım Gün</th><th>İzinli</th><th>Yevmiye</th><th>Hesaplanan</th></tr></thead><tbody>${summaryRows || '<tr><td colspan="7" class="empty">Bu dönemde kayıt yok.</td></tr>'}</tbody></table></div>
     </div>`;
 }
 
@@ -465,10 +495,22 @@ function updateTimesheetRowAmount(row) {
 
 function saveTimesheetDay() {
   const target = state.db.records.timesheets ||= [];
-  $$("#timesheetRows tr[data-staff-id]").forEach(row => {
+  const rows = $$("#timesheetRows tr[data-staff-id]");
+  const invalidRow = rows.find(row => {
+    const status = row.querySelector("[data-timesheet-status]").value;
+    return ["Tam Gün", "Yarım Gün"].includes(status) && !row.querySelector("[data-timesheet-assignment]").value;
+  });
+  if (invalidRow) {
+    const person = records("staff").find(item => item.id === invalidRow.dataset.staffId);
+    return toast(`${person?.name || "Personel"} için bu tarihte geçerli görevlendirme seçmelisiniz.`);
+  }
+
+  rows.forEach(row => {
     const staffId = row.dataset.staffId;
     const person = records("staff").find(item => item.id === staffId);
     const status = row.querySelector("[data-timesheet-status]").value;
+    const assignmentId = row.querySelector("[data-timesheet-assignment]").value;
+    const assignment = records("staff_assignments").find(item => item.id === assignmentId);
     const existingIndex = target.findIndex(item => item.date === state.timesheetDate && item.staffId === staffId);
     if (!status) {
       if (existingIndex >= 0) target.splice(existingIndex, 1);
@@ -480,6 +522,11 @@ function saveTimesheetDay() {
       date: state.timesheetDate,
       staffId,
       staffName: person.name,
+      assignmentId: assignment?.id || "",
+      projectId: assignment?.projectId || "",
+      project: assignment?.project || "",
+      siteId: assignment?.siteId || "",
+      site: assignment?.site || "",
       status,
       wageMultiplier: row.querySelector("[data-timesheet-wage]").value,
       note: row.querySelector("[data-timesheet-note]").value.trim(),
@@ -497,7 +544,7 @@ function saveTimesheetDay() {
 
 function exportTimesheetCsv() {
   const rows = records("timesheets").filter(item => item.period === state.timesheetPeriod || item.date?.startsWith(state.timesheetPeriod));
-  const csv = [["Dönem", "Tarih", "Personel", "Durum", "Yevmiye", "Açıklama"], ...rows.map(item => [item.period, item.date, item.staffName, item.status, item.wageMultiplier, item.note || ""])]
+  const csv = [["Dönem", "Tarih", "Personel", "Proje", "Şantiye", "Durum", "Yevmiye", "Açıklama"], ...rows.map(item => [item.period, item.date, item.staffName, item.project || "", item.site || "", item.status, item.wageMultiplier, item.note || ""])]
     .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
   downloadFile("yapi360-puantaj-" + state.timesheetPeriod + ".csv", "\ufeff" + csv, "text/csv");
   toast("Puantaj dönem dosyası hazırlandı.");
@@ -546,7 +593,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.3.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.4.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -764,10 +811,30 @@ function openWarehouseModal() {
   $("#recordModal").classList.add("open");
 }
 
+function openStaffAssignmentModal(id = null) {
+  const row = records("staff_assignments").find(item => item.id === id) || {};
+  const staff = records("staff");
+  const projects = records("projects");
+  const selectedProjectId = row.projectId || projects.find(item => item.name === row.project)?.id || "";
+  state.editId = id;
+  $("#modalTitle").textContent = "Personel Görevlendirme" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label for="field-staffId">Personel</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, row.staffId, item => item.name + " · " + item.role, "Önce personel tanımlayın")}</select></div>
+    <div class="field"><label for="field-projectId">Proje</label><select class="select" id="field-projectId" name="projectId" required>${optionList(projects, selectedProjectId, item => item.name, "Önce proje tanımlayın")}</select></div>
+    <div class="field"><label for="field-siteId">Şantiye</label><select class="select" id="field-siteId" name="siteId" required>${warehouseSiteOptions(selectedProjectId, row.siteId)}</select></div>
+    <div class="field"><label for="field-duty">Görev / ekip</label><input class="input" id="field-duty" name="duty" value="${escapeHtml(row.duty || "")}" required></div>
+    <div class="field"><label for="field-startDate">Başlangıç tarihi</label><input class="input" id="field-startDate" name="startDate" type="date" value="${escapeHtml(row.startDate || new Date().toISOString().slice(0, 10))}" required></div>
+    <div class="field"><label for="field-endDate">Bitiş tarihi</label><input class="input" id="field-endDate" name="endDate" type="date" value="${escapeHtml(row.endDate || "")}"></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required><option ${row.status !== "Tamamlandı" ? "selected" : ""}>Aktif</option><option ${row.status === "Tamamlandı" ? "selected" : ""}>Tamamlandı</option></select></div>`;
+  $("#field-projectId").addEventListener("change", event => { $("#field-siteId").innerHTML = warehouseSiteOptions(event.target.value); });
+  $("#recordModal").classList.add("open");
+}
+
 function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
   if (section.specialForm === "cash") return openCashModal(id);
   if (section.specialForm === "warehouse") return openWarehouseModal();
+  if (section.specialForm === "staffAssignment") return openStaffAssignmentModal(id);
   const source = state.page === "users" ? state.db.users : records(state.page);
   const row = source.find(item => item.id === id) || {};
   state.editId = id;
@@ -826,6 +893,7 @@ function referenceCount(page, row) {
   }
   if (["purchases", "sales"].includes(page)) count += records("cash").filter(item => item.sourceRecordId === row.id).length;
   if (page === "checks") count += records("cash").filter(item => item.instrumentId === row.id || item.createdInstrumentId === row.id).length;
+  if (page === "staff_assignments") count += records("timesheets").filter(item => item.assignmentId === row.id).length;
   return count;
 }
 
@@ -929,6 +997,7 @@ async function saveRecord(event) {
   const data = Object.fromEntries(new FormData(event.target));
   if (section.specialForm === "cash") return saveCashRecord(data);
   if (section.specialForm === "warehouse") return saveWarehouseRecord(data);
+  if (section.specialForm === "staffAssignment") return saveStaffAssignment(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
@@ -966,6 +1035,59 @@ async function saveRecord(event) {
   closeModal();
   renderPage();
   toast(wasEdit ? "Kayıt güncellendi." : "Kayıt eklendi.");
+}
+
+function assignmentRangesOverlap(firstStart, firstEnd, secondStart, secondEnd) {
+  const firstMax = firstEnd || "9999-12-31";
+  const secondMax = secondEnd || "9999-12-31";
+  return firstStart <= secondMax && secondStart <= firstMax;
+}
+
+function saveStaffAssignment(data) {
+  const staff = records("staff").find(item => item.id === data.staffId);
+  const project = records("projects").find(item => item.id === data.projectId);
+  const site = records("sites").find(item => item.id === data.siteId);
+  if (!staff || !project || !site || site.project !== project.name) return toast("Personel, proje ve projeye bağlı şantiye seçmelisiniz.");
+  if (data.endDate && data.endDate < data.startDate) return toast("Bitiş tarihi başlangıç tarihinden önce olamaz.");
+  if (data.status === "Tamamlandı" && !data.endDate) return toast("Tamamlanan görevlendirme için bitiş tarihi zorunludur.");
+
+  const target = state.db.records.staff_assignments ||= [];
+  if (target.some(item => item.id !== state.editId && item.staffId === staff.id && item.siteId === site.id && assignmentRangesOverlap(data.startDate, data.endDate, item.startDate, item.endDate))) {
+    return toast("Bu personelin aynı şantiyede çakışan bir görevlendirmesi var.");
+  }
+  const linkedTimesheets = records("timesheets").filter(item => item.assignmentId === state.editId);
+  if (linkedTimesheets.some(item => item.date < data.startDate || (data.endDate && item.date > data.endDate))) {
+    return toast("Tarih aralığı bu görevlendirmeye bağlı puantaj kayıtlarını dışarıda bırakamaz.");
+  }
+
+  let row = target.find(item => item.id === state.editId);
+  const wasEdit = Boolean(row);
+  const assignment = {
+    staffId: staff.id,
+    staffName: staff.name,
+    projectId: project.id,
+    project: project.name,
+    siteId: site.id,
+    site: site.name,
+    duty: data.duty,
+    startDate: data.startDate,
+    endDate: data.endDate || "",
+    status: data.status,
+    updatedAt: new Date().toISOString()
+  };
+  if (row) Object.assign(row, assignment);
+  else {
+    row = { id: uid(), ...assignment, createdAt: new Date().toISOString() };
+    target.push(row);
+  }
+  linkedTimesheets.forEach(item => {
+    Object.assign(item, { staffId: staff.id, staffName: staff.name, projectId: project.id, project: project.name, siteId: site.id, site: site.name, updatedAt: new Date().toISOString() });
+  });
+  audit(wasEdit ? "Personel görevlendirmesi güncellendi" : "Personel görevlendirmesi eklendi", staff.name + " · " + project.name + " / " + site.name);
+  persist();
+  closeModal();
+  renderPage();
+  toast(wasEdit ? "Görevlendirme güncellendi." : "Görevlendirme eklendi.");
 }
 
 function saveCashRecord(data) {
@@ -1150,7 +1272,7 @@ function reverseWarehouseMovement(movement) {
 }
 
 function recordName(row) {
-  return row.name || row.number || row.description || row.customer || row.supplier || row.email || "Kayıt";
+  return row.name || row.staffName || row.itemName || row.number || row.description || row.customer || row.supplier || row.email || "Kayıt";
 }
 
 function deleteRecord(id) {
@@ -1276,7 +1398,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.3.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.4.0", { updateViaCache: "none" });
     registration.update();
   });
 }

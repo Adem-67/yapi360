@@ -2,8 +2,8 @@ window.YAPI360_NAV = [
   { label: "GENEL", items: ["dashboard"] },
   { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
   { label: "FİNANS", items: ["cash", "purchases", "sales", "checks"] },
-  { label: "OPERASYON", items: ["contacts", "staff", "timesheets", "inventory", "warehouse", "assets", "categories"] },
-  { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "cost_analysis", "warehouse_report"] },
+  { label: "OPERASYON", items: ["contacts", "staff", "staff_assignments", "timesheets", "inventory", "warehouse", "assets", "categories"] },
+  { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "staff_assignment_report", "cost_analysis", "warehouse_report"] },
   { label: "YÖNETİM", items: ["users", "settings", "audit"] }
 ];
 
@@ -54,7 +54,11 @@ window.YAPI360_SECTIONS = {
   },
   staff: {
     title: "Personeller", icon: "♟", description: "Personel, görev, maaş ve avans takibi.",
-    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("site", "Şantiye", "relation", { source: "sites", optional: true }), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
+    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
+  },
+  staff_assignments: {
+    title: "Personel Görevlendirme", icon: "⇄", description: "Personelin proje ve şantiye görevlendirmelerini tarih aralığıyla izleyin.", specialForm: "staffAssignment",
+    fields: [f("staffName", "Personel"), f("project", "Proje"), f("site", "Şantiye"), f("duty", "Görev / ekip"), f("startDate", "Başlangıç", "date"), f("endDate", "Bitiş", "date"), f("status", "Durum")]
   },
   timesheets: { title: "Puantaj Planı", icon: "◫", description: "Günlük çalışma durumu, yevmiye çarpanı ve aylık dönem toplamları.", special: "timesheets" },
   inventory: {
@@ -75,6 +79,7 @@ window.YAPI360_SECTIONS = {
   },
   contact_ledger: { title: "Cari Hesap Hareketleri", icon: "▤", description: "Alış, satış ve tahsilatlardan oluşan cari sonuçları.", special: "contactLedger" },
   staff_ledger: { title: "Personel Hesap Hareketleri", icon: "▥", description: "Ücret ve avans sonuçlarının personel bazında görünümü.", special: "staffLedger" },
+  staff_assignment_report: { title: "Personel Şantiye Raporu", icon: "⇄", description: "Personelin dönemsel proje ve şantiye görevlendirme geçmişi.", special: "staffAssignmentReport" },
   cost_analysis: { title: "Maliyet Analizi", icon: "◔", description: "Proje bütçesi ile gerçekleşen alış maliyetinin karşılaştırması.", special: "costAnalysis" },
   warehouse_report: { title: "Proje / Şantiye Sevk Raporu", icon: "▥", description: "Ana depodan proje ve şantiyelere gönderilen malzemelerin özeti.", special: "warehouseReport" },
   users: {
