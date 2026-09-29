@@ -1,0 +1,31 @@
+import { readFileSync } from "node:fs";
+
+const read = file => readFileSync(new URL("../" + file, import.meta.url), "utf8");
+const html = read("index.html");
+const app = read("app.js");
+const data = read("data.js");
+const sw = read("sw.js");
+const manifest = JSON.parse(read("manifest.webmanifest"));
+
+for (const [name, source] of Object.entries({ "app.js": app, "data.js": data, "sw.js": sw })) {
+  try {
+    new Function(source);
+  } catch (error) {
+    throw new Error(`${name} sözdizimi hatası: ${error.message}`);
+  }
+}
+
+const requiredIds = ["auth", "authForm", "app", "sidebar", "nav", "content", "recordModal", "recordForm", "toast"];
+for (const id of requiredIds) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
+}
+
+for (const asset of ["styles.css?v=4.0.0", "data.js?v=4.0.0", "app.js?v=4.0.0", "manifest.webmanifest?v=4.0.0"]) {
+  if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
+}
+
+if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
+if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
+if (app.includes("admin@yapi360.demo")) throw new Error("Demo hesabı uygulama kodunda kalmış.");
+
+console.log("Yapı360 doğrulaması başarılı: JS, PWA, DOM ve demo temizliği.");

@@ -1,15 +1,79 @@
+window.YAPI360_NAV = [
+  { label: "GENEL", items: ["dashboard"] },
+  { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
+  { label: "FİNANS", items: ["cash", "purchases", "sales", "checks"] },
+  { label: "OPERASYON", items: ["contacts", "staff", "inventory", "assets", "categories"] },
+  { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "cost_analysis"] },
+  { label: "YÖNETİM", items: ["users", "settings", "audit"] }
+];
+
+const f = (name, label, type = "text", extra = {}) => ({ name, label, type, ...extra });
+
 window.YAPI360_SECTIONS = {
-dashboard:{title:"Genel Bakış",description:"Projeler, finans ve satış performansının güncel özeti."},
-projeler:{title:"Projeler",description:"Aktif ve planlanan projelerin süre, bütçe ve ilerleme takibi.",columns:["Proje","Konum","Durum","İlerleme","Bütçe"],rows:[["Şamlar Residence","Başakşehir","Aktif","%68","₺480 Mn"],["Kayaşehir Park","Kayaşehir","Aktif","%52","₺325 Mn"],["Kartal Sahil","Kartal","Aktif","%41","₺610 Mn"],["Tuzla Karma","Tuzla","Planlı","%12","₺275 Mn"]]},
-sozlesmeler:{title:"Sözleşmeler",description:"Arsa sahibi, satış ve tedarik sözleşmelerinin merkezi takibi.",columns:["Sözleşme","Taraf","Proje","Tarih","Durum"],rows:[["Arsa Payı Karşılığı","Yıldız Ailesi","Şamlar Residence","12.03.2026","İmzalandı"],["Kaba İnşaat","ABC Yapı","Kayaşehir Park","04.06.2026","Aktif"],["Satış Sözleşmesi","Ayşe Demir","Kartal Sahil","21.08.2026","Taslak"]]},
-santiye:{title:"Şantiye",description:"İş programı, günlük rapor ve fiziksel ilerleme yönetimi.",columns:["İş Kalemi","Proje","Sorumlu","Plan","Gerçekleşen"],rows:[["Betonarme","Şamlar Residence","Mehmet Kaya","%74","%68"],["Mekanik","Kayaşehir Park","Ece Teknik","%56","%52"],["Cephe","Kartal Sahil","Nova Cephe","%45","%41"]]},
-taseronlar:{title:"Taşeronlar",description:"Taşeron sözleşmeleri, cari durum ve performans takibi.",columns:["Firma","Uzmanlık","Proje","Sözleşme","Bakiye"],rows:[["ABC Kalıp Ltd.","Kalıp","Şamlar Residence","₺12,5 Mn","₺7,5 Mn"],["Ece Teknik","Mekanik","Kayaşehir Park","₺8,2 Mn","₺3,1 Mn"],["Nova Cephe","Cephe","Kartal Sahil","₺14,8 Mn","₺9,4 Mn"]]},
-hakedisler:{title:"Hakedişler",description:"Hakediş hazırlama, onay ve ödeme akışları.",columns:["No","Taşeron","Dönem","Tutar","Durum"],rows:[["HK-2026-018","ABC Kalıp Ltd.","Ağustos 2026","₺1,25 Mn","Onay Bekliyor"],["HK-2026-017","Ece Teknik","Ağustos 2026","₺680 Bin","Onaylandı"],["HK-2026-016","Nova Cephe","Temmuz 2026","₺940 Bin","Ödendi"]]},
-satinalma:{title:"Satın Alma",description:"Talep, teklif karşılaştırma ve sipariş süreci.",columns:["Talep","Malzeme","Proje","Tutar","Durum"],rows:[["ST-1042","120 ton nervürlü demir","Şamlar Residence","₺3,72 Mn","Teklif Seçildi"],["ST-1041","Seramik 3.400 m²","Kayaşehir Park","₺1,18 Mn","Teklif Toplanıyor"],["ST-1040","Elektrik kablosu","Kartal Sahil","₺560 Bin","Sipariş"]]},
-depo:{title:"Depo / Stok",description:"Şantiye bazlı stok giriş, çıkış ve kritik seviye kontrolü.",columns:["Malzeme","Depo","Mevcut","Birim","Durum"],rows:[["Nervürlü Demir","Şamlar Ana Depo","42","ton","Yeterli"],["Çimento","Kayaşehir Depo","180","torba","Kritik"],["Seramik","Kartal Depo","2.150","m²","Yeterli"]]},
-bagimsiz:{title:"Bağımsız Bölümler",description:"Daire ve ticari ünitelerin durum, fiyat ve malik bilgileri.",columns:["Ünite","Proje","Tip","Brüt m²","Durum"],rows:[["A-15","Şamlar Residence","3+1","145","Satışta"],["B-18","Şamlar Residence","2+1","108","Rezerve"],["C-08","Kayaşehir Park","Dükkan","220","Satıldı"]]},
-crm:{title:"CRM",description:"Müşteri adayları, görüşmeler ve satış fırsatları.",columns:["Müşteri","İlgilendiği Proje","Bütçe","Son Görüşme","Aşama"],rows:[["Ahmet Yılmaz","Şamlar Residence","₺15 Mn","28.08.2026","Teklif"],["Selin Aksoy","Kartal Sahil","₺22 Mn","27.08.2026","Proje Ziyareti"],["Mert Can","Kayaşehir Park","₺12 Mn","25.08.2026","Yeni"]]},
-satis:{title:"Satış & Tahsilat",description:"Satış sözleşmeleri, ödeme planları ve tahsilat durumu.",columns:["Müşteri","Ünite","Satış Bedeli","Tahsil Edilen","Durum"],rows:[["Ayşe Demir","A-15","₺15 Mn","₺8,2 Mn","Devam Ediyor"],["Can Kaya","C-08","₺21 Mn","₺21 Mn","Tamamlandı"],["Deniz Aras","B-18","₺13,5 Mn","₺2,7 Mn","Gecikme"]]},
-raporlar:{title:"Raporlar",description:"Yönetim, maliyet, satış ve tahsilat raporları.",columns:["Rapor","Dönem","Son Güncelleme","Format","Durum"],rows:[["Proje Karlılık","2026","30.08.2026","PDF / CSV","Hazır"],["Satış Performansı","Ağustos 2026","30.08.2026","CSV","Hazır"],["Nakit Akışı","Q3 2026","29.08.2026","PDF","Hazır"]]},
-ayarlar:{title:"Ayarlar",description:"Firma, kullanıcı, yetki ve uygulama tercihleri.",settings:true}
+  dashboard: { title: "Yönetim Paneli", icon: "▦", description: "Finans, proje ve operasyon sonuçlarının canlı özeti.", special: "dashboard" },
+  projects: {
+    title: "Projeler", icon: "▣", description: "Bütçe, süre ve fiziksel ilerleme takibi.",
+    fields: [f("name", "Proje adı"), f("location", "Konum"), f("budget", "Bütçe", "number"), f("progress", "İlerleme (%)", "number"), f("status", "Durum", "select", { options: ["Planlama", "Aktif", "Tamamlandı", "Beklemede"] })]
+  },
+  contracts: {
+    title: "Sözleşmeler", icon: "▤", description: "Arsa sahibi, taşeron, satış ve tedarik sözleşmeleri.",
+    fields: [f("name", "Sözleşme"), f("party", "Taraf"), f("project", "Proje"), f("date", "Tarih", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] })]
+  },
+  sites: {
+    title: "Şantiyeler", icon: "◓", description: "Şantiye iş kalemleri ve plan-gerçekleşen ilerleme.",
+    fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje"), f("manager", "Sorumlu"), f("planned", "Planlanan (%)", "number"), f("actual", "Gerçekleşen (%)", "number")]
+  },
+  subcontractors: {
+    title: "Taşeronlar", icon: "▧", description: "Taşeron sözleşmesi, uzmanlık ve bakiye takibi.",
+    fields: [f("name", "Firma"), f("specialty", "Uzmanlık"), f("project", "Proje"), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
+  },
+  progress: {
+    title: "Hakedişler", icon: "₺", description: "Hakediş hazırlama, onay ve ödeme akışı.",
+    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron"), f("project", "Proje"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] })]
+  },
+  cash: {
+    title: "Kasa Hareketleri", icon: "↻", description: "Manuel ve işlemlerden otomatik oluşan para hareketleri.",
+    fields: [f("date", "Tarih", "date"), f("type", "Tür", "select", { options: ["Gelir", "Gider"] }), f("category", "Kategori"), f("description", "Açıklama"), f("amount", "Tutar", "number")]
+  },
+  purchases: {
+    title: "Alış İşlemleri", icon: "🛒", description: "Tedarikçi, proje ve stokla ilişkili alış kayıtları.",
+    fields: [f("date", "Tarih", "date"), f("supplier", "Tedarikçi / cari"), f("project", "Proje"), f("item", "Stok / hizmet"), f("quantity", "Miktar", "number"), f("amount", "Toplam tutar", "number"), f("paymentStatus", "Ödeme", "select", { options: ["Ödenmedi", "Kısmi", "Ödendi"] })]
+  },
+  sales: {
+    title: "Satış & Tahsilat", icon: "▣", description: "Müşteri satışı, tahsilat ve kalan bakiye takibi.",
+    fields: [f("date", "Tarih", "date"), f("customer", "Müşteri / cari"), f("project", "Proje"), f("unit", "Bağımsız bölüm / hizmet"), f("total", "Satış bedeli", "number"), f("collected", "Tahsil edilen", "number"), f("status", "Durum", "select", { options: ["Teklif", "Sözleşme", "Devam Ediyor", "Tamamlandı", "Gecikme"] })]
+  },
+  checks: {
+    title: "Çek / Senet", icon: "▭", description: "Alınan ve verilen çek-senet vade takibi.",
+    fields: [f("type", "Tür", "select", { options: ["Alınan Çek", "Verilen Çek", "Alınan Senet", "Verilen Senet"] }), f("party", "Cari"), f("dueDate", "Vade", "date"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Portföyde", "Tahsil Edildi", "Ödendi", "Karşılıksız", "İade"] })]
+  },
+  contacts: {
+    title: "Cariler", icon: "▥", description: "Müşteri, tedarikçi ve taşeron cari kartları.",
+    fields: [f("name", "Cari adı"), f("type", "Tür", "select", { options: ["Müşteri", "Tedarikçi", "Taşeron", "Arsa Sahibi"] }), f("phone", "Telefon", "tel"), f("taxId", "Vergi / TC no"), f("openingBalance", "Açılış bakiyesi", "number")]
+  },
+  staff: {
+    title: "Personeller", icon: "♟", description: "Personel, görev, maaş ve avans takibi.",
+    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("site", "Şantiye"), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
+  },
+  inventory: {
+    title: "Stoklar / Hizmetler", icon: "▦", description: "Malzeme ve hizmet kartları, kritik stok kontrolü.",
+    fields: [f("name", "Stok / hizmet"), f("type", "Tür", "select", { options: ["Malzeme", "Hizmet"] }), f("category", "Kategori"), f("unit", "Birim"), f("onHand", "Mevcut", "number"), f("critical", "Kritik seviye", "number")]
+  },
+  assets: {
+    title: "Demirbaş Takibi", icon: "⚒", description: "Makine, araç ve ekipmanın zimmet ve bakım durumu.",
+    fields: [f("name", "Demirbaş"), f("serial", "Seri / plaka"), f("site", "Konum / şantiye"), f("assignedTo", "Zimmetli"), f("nextMaintenance", "Sonraki bakım", "date"), f("status", "Durum", "select", { options: ["Aktif", "Bakımda", "Arızalı", "Hurda"] })]
+  },
+  categories: {
+    title: "Kategoriler", icon: "◆", description: "Finans, stok ve operasyon sınıflandırmaları.",
+    fields: [f("name", "Kategori"), f("group", "Grup", "select", { options: ["Gelir", "Gider", "Stok", "Hizmet", "Demirbaş"] }), f("code", "Kod"), f("status", "Durum", "select", { options: ["Aktif", "Pasif"] })]
+  },
+  contact_ledger: { title: "Cari Hesap Hareketleri", icon: "▤", description: "Alış, satış ve tahsilatlardan oluşan cari sonuçları.", special: "contactLedger" },
+  staff_ledger: { title: "Personel Hesap Hareketleri", icon: "▥", description: "Ücret ve avans sonuçlarının personel bazında görünümü.", special: "staffLedger" },
+  cost_analysis: { title: "Maliyet Analizi", icon: "◔", description: "Proje bütçesi ile gerçekleşen alış maliyetinin karşılaştırması.", special: "costAnalysis" },
+  users: {
+    title: "Kullanıcı Yönetimi", icon: "♙", description: "Firma kullanıcıları, roller ve erişim durumu.", special: "users",
+    fields: [f("name", "Ad soyad"), f("email", "E-posta", "email"), f("role", "Rol", "select", { options: ["Admin", "Yönetici", "Muhasebe", "Satış", "Şantiye", "Görüntüleme"] }), f("status", "Durum", "select", { options: ["Aktif", "Pasif"] }), f("password", "Geçici şifre", "password", { table: false })]
+  },
+  settings: { title: "Firma Ayarları", icon: "⚙", description: "Firma profili, veri yedeği ve çalışma alanı tercihleri.", special: "settings" },
+  audit: { title: "İşlem Geçmişi", icon: "◴", description: "Kullanıcı ve kayıt işlemlerinin izlenebilir geçmişi.", special: "audit" }
 };
