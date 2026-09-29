@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
+      - name: Yapı360 kaynak doğrulaması
+        run: node scripts/validate.mjs
       - name: Pages yapılandırması
         uses: actions/configure-pages@v5
         with:

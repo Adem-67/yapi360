@@ -1,32 +1,37 @@
-# Yapı360
+# Yapı360 v4
 
-İnşaat firmaları için proje, sözleşme, şantiye, taşeron, hakediş, satın alma, stok, bağımsız bölüm, CRM, satış ve tahsilat yönetimi sunan modüler PWA prototipi.
+İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
-## Demo giriş
+## İlk kurulum
 
-- E-posta: `admin@yapi360.demo`
-- Şifre: `123456`
+İlk açılışta sabit demo hesabı kullanılmaz. Firma adı, yönetici adı, e-posta ve en az 6 karakterli şifre ile çalışma alanı oluşturulur. Parola tarayıcıda SHA-256 özeti olarak tutulur.
 
-## Yapı
+> v4 yerel çalışma alanı sürümüdür. Veriler yalnızca kullanılan tarayıcıda saklanır. Gerçek çok kullanıcılı üretim kullanımı için API, sunucu tarafı oturum yönetimi ve merkezi veritabanı gerekir.
 
-- `index.html`: erişilebilir uygulama kabuğu
-- `styles.css`: responsive tasarım sistemi
-- `data.js`: modül tanımları ve örnek veriler
-- `app.js`: navigasyon, oturum, CRUD, arama ve CSV dışa aktarma
-- `manifest.webmanifest` / `sw.js`: PWA ve çevrimdışı çalışma
+## İşlem-sonuç ilişkileri
+
+- Ödenmiş alış işlemi → kasa gideri + proje maliyet analizi + cari hesap sonucu
+- Satış ve tahsilat → kasa geliri + müşteri cari bakiyesi
+- Personel ücret ve avans → personel hesap hareketi sonucu
+- Proje bütçesi + projeye bağlı alışlar → bütçe kullanım oranı
+- Kritik seviye altındaki stok → yönetim paneli uyarısı
+
+## Modüller
+
+- Projeler, sözleşmeler, şantiyeler, taşeronlar, hakedişler
+- Kasa, alış, satış-tahsilat, çek-senet
+- Cariler, personeller, stok-hizmetler, demirbaşlar, kategoriler
+- Cari hesap, personel hesap ve maliyet raporları
+- Kullanıcı/rol yönetimi, firma ayarları, işlem geçmişi, JSON yedekleme
 
 ## Yerel çalıştırma
-
-Service Worker güvenli origin gerektirdiği için dosyayı çift tıklamak yerine statik bir HTTP sunucusu kullanın:
 
 ```bash
 npx serve .
 ```
 
-Ardından tarayıcıda gösterilen yerel adresi açın.
+## Doğrulama
 
-## Özellikler
-
-Tüm sol menü sekmeleri işlevseldir. Demo verileri korunur; eklenen kayıtlar tarayıcıdaki `localStorage` alanında saklanır. Liste araması, yeni kayıt, kullanıcı kaydı silme, CSV dışa aktarma, PWA kurulum ve çevrimdışı uygulama kabuğu desteklenir.
-
-> Bu sürüm profesyonel ön yüz prototipidir. Üretim kullanımı için kimlik doğrulama, yetkilendirme ve kalıcı veriler sunucu tarafına taşınmalıdır.
+```bash
+node scripts/validate.mjs
+```

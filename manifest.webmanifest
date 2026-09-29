@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Yapı360 - İnşaat Yönetim Platformu",
   "short_name": "Yapı360",
-  "description": "İnşaat proje, sözleşme, şantiye, maliyet, satış ve tahsilat yönetim platformu",
+  "description": "İnşaat proje, finans, şantiye, cari, stok ve satış yönetim platformu",
   "lang": "tr-TR",
   "dir": "ltr",
   "start_url": "./",
@@ -17,7 +17,9 @@
     {"src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
   ],
   "shortcuts": [
-    {"name": "Projeler", "short_name": "Projeler", "url": "./#projeler"},
-    {"name": "Satış & Tahsilat", "short_name": "Satış", "url": "./#satis"}
+    {"name": "Yönetim Paneli", "short_name": "Panel", "url": "./#dashboard"},
+    {"name": "Kasa Hareketleri", "short_name": "Kasa", "url": "./#cash"},
+    {"name": "Alış İşlemleri", "short_name": "Alış", "url": "./#purchases"},
+    {"name": "Satış & Tahsilat", "short_name": "Satış", "url": "./#sales"}
   ]
 }
