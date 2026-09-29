@@ -1,6 +1,7 @@
 window.YAPI360_NAV = [
   { label: "GENEL", items: ["dashboard"] },
   { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
+  { label: "SATINALMA & İDARİ İŞLER", items: ["procurement_admin", "purchase_requests", "supplier_quotes", "purchase_orders", "administrative_tasks"] },
   { label: "FİNANS", items: ["cash", "bank_accounts", "purchases", "sales", "checks"] },
   { label: "OPERASYON", items: ["contacts", "staff", "staff_assignments", "timesheets", "inventory", "warehouse", "assets", "categories"] },
   { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "staff_assignment_report", "cost_analysis", "warehouse_report"] },
@@ -30,6 +31,23 @@ window.YAPI360_SECTIONS = {
   progress: {
     title: "Hakedişler", icon: "₺", description: "Dosyalarıyla birlikte hakediş hazırlama, onay ve ödeme akışı.", specialForm: "progress",
     fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("paidAmount", "Ödenen", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
+  },
+  procurement_admin: { title: "Satınalma & İdari İşler", icon: "◫", description: "Talep, teklif, sipariş, teslim alma ve idari görev süreçlerinin bağlantılı çalışma alanı.", special: "procurementDashboard" },
+  purchase_requests: {
+    title: "Satınalma Talepleri", icon: "＋", description: "Proje, şantiye, personel ve stok kartına bağlı satınalma ihtiyaçları.", specialForm: "purchaseRequest",
+    fields: [f("number", "Talep no"), f("date", "Talep tarihi", "date"), f("project", "Proje"), f("site", "Şantiye"), f("itemName", "Stok / hizmet"), f("quantity", "Miktar", "number"), f("unit", "Birim"), f("requestedBy", "Talep eden"), f("neededDate", "İhtiyaç tarihi", "date"), f("priority", "Öncelik"), f("status", "Durum")]
+  },
+  supplier_quotes: {
+    title: "Tedarikçi Teklifleri", icon: "▤", description: "Satınalma taleplerine bağlı tedarikçi teklifleri ve onay karşılaştırması.", specialForm: "supplierQuote",
+    fields: [f("number", "Teklif no"), f("requestNumber", "Talep no"), f("supplier", "Tedarikçi / cari"), f("itemName", "Stok / hizmet"), f("quantity", "Miktar", "number"), f("amount", "Teklif tutarı", "number"), f("deliveryDate", "Teslim tarihi", "date"), f("validUntil", "Geçerlilik", "date"), f("status", "Durum")]
+  },
+  purchase_orders: {
+    title: "Satınalma Siparişleri", icon: "🛒", description: "Onaylı tekliflerden oluşan siparişler ve alış/ana depo teslim bağlantısı.", specialForm: "purchaseOrder",
+    fields: [f("number", "Sipariş no"), f("date", "Sipariş tarihi", "date"), f("requestNumber", "Talep no"), f("quoteNumber", "Teklif no"), f("supplier", "Tedarikçi"), f("project", "Proje"), f("site", "Şantiye"), f("itemName", "Stok / hizmet"), f("quantity", "Miktar", "number"), f("amount", "Sipariş tutarı", "number"), f("expectedDelivery", "Planlanan teslim", "date"), f("receivedDate", "Teslim alma", "date"), f("status", "Durum")]
+  },
+  administrative_tasks: {
+    title: "İdari İşler", icon: "▦", description: "Ruhsat, sigorta, abonelik, resmi yazışma, bakım ve ofis görevleri.", specialForm: "administrativeTask",
+    fields: [f("number", "İş no"), f("category", "Kategori"), f("project", "Proje"), f("site", "Şantiye"), f("responsible", "Sorumlu"), f("dueDate", "Son tarih", "date"), f("priority", "Öncelik"), f("status", "Durum"), f("description", "Açıklama")]
   },
   cash: {
     title: "Kasa & Finans Hareketleri", icon: "↻", description: "Nakit, dekont, personel, çek ve senet işlemlerinin ilişkili kayıtları.",

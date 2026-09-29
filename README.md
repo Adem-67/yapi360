@@ -1,4 +1,4 @@
-# Yapı360 v4.11
+# Yapı360 v4.14
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -41,6 +41,9 @@
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı
 - Ana depo sevki → proje + projeye bağlı şantiye + sevk eden personel + stok düşümü
 - Taşeron malzeme çıkışı → “Firma Sağlar” anlaşması seçimi ve taşeron bazlı teslim raporu
+- Satınalma & İdari İşler → proje/şantiye/personel/stok bağlantılı talep, talebe bağlı tedarikçi teklifleri ve onaylı tekliften sipariş
+- Sipariş teslimi → otomatik Alış İşlemi kaydı ve malzemede otomatik ana depo girişi
+- İdari görevler → ruhsat, sigorta, abonelik, resmi yazışma, ofis, araç ve bakım işlerini proje/şantiye/sorumlu/son tarih ile takip
 
 ## Modüller
 
@@ -51,6 +54,7 @@
 - Dönemsel personel görevlendirme, şantiye çalışma geçmişi ve tarih filtreli puantaj
 - Aylık puantaj özeti ve CSV dışa aktarma
 - Ana depo hareketleri ile proje/şantiye/taşeron sevk raporu
+- Satınalma talepleri, tedarikçi teklifleri, satınalma siparişleri ve idari işler çalışma alanı
 - Cari hesap, personel hesap ve maliyet raporları
 - Kullanıcı/rol yönetimi, firma ayarları, işlem geçmişi, JSON yedekleme
 

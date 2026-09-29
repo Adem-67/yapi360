@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.13.0", "data.js?v=4.13.0", "app.js?v=4.13.0", "manifest.webmanifest?v=4.13.0"]) {
+for (const asset of ["styles.css?v=4.14.0", "data.js?v=4.14.0", "app.js?v=4.14.0", "manifest.webmanifest?v=4.14.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.13.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.14.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -59,5 +59,8 @@ if (manifest.name !== "Yapı360" || !html.includes("<title>İnşaat Yönetim Pla
 if (!data.includes('"relation"')) throw new Error("Tanımlı kayıt seçimleri eksik.");
 if (!data.includes('warehouse_report') || !app.includes("saveWarehouseRecord") || !app.includes("syncPurchaseInventory")) throw new Error("Ana depo ve sevkiyat ilişkisi eksik.");
 if (!app.includes("Taşerona Malzeme") || !data.includes("materialProvision")) throw new Error("Taşeron malzeme akışı eksik.");
+if (!data.includes('procurement_admin') || !data.includes('purchase_requests') || !data.includes('supplier_quotes') || !data.includes('purchase_orders') || !data.includes('administrative_tasks')) throw new Error("Satınalma ve idari işler modülleri eksik.");
+if (!app.includes("openPurchaseRequestModal") || !app.includes("savePurchaseRequest") || !app.includes("saveSupplierQuote") || !app.includes("savePurchaseOrder") || !app.includes("saveAdministrativeTask")) throw new Error("Satınalma ve idari işler formları eksik.");
+if (!app.includes("syncPurchaseOrderReceipt") || !app.includes("purchaseOrderId") || !app.includes("alış ve depo girişi oluşturuldu")) throw new Error("Sipariş teslimi ile alış/ana depo bağlantısı eksik.");
 
 console.log("Yapı360 doğrulaması başarılı: JS, PWA, DOM ve demo temizliği.");
