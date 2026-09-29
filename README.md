@@ -1,4 +1,4 @@
-# Yapı360 v4.9
+# Yapı360 v4.10
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -28,7 +28,8 @@
 - Hakediş kartı → çoklu PDF, görsel, Word ve Excel dosyası + onay sonrası taşeron cari alacağı/firma borcu
 - Hakediş numarası → yıl bazlı, sıralı ve sistem tarafından otomatik oluşturulan `HKD-YYYY-0001` biçimi
 - Hakediş durumu → “Taslak” ve “Onay Bekliyor” bakiyeyi etkilemez; “Onaylandı” ve “Ödendi” cari hesaba yansır
-- Hakediş ödemesi → Kasa & Finans Hareketleri’nde aynı cariye kaydedilen “Ödeme” ile cari alacağı azalır
+- Hakediş ödemesi → Kasa & Finans Hareketleri’nde taşeron seçildikten sonra yalnızca o carinin onaylı ve bakiyesi kalan hakedişleri listelenir
+- Bağlı hakediş ödemesi → kalan tutarı otomatik getirir; kısmi ödemede bakiyeyi azaltır, tam ödemede hakedişi otomatik “Ödendi” yapar
 - Yönetim paneli → planlanan proje maliyeti, aktif sözleşmeler, onaylı hakedişler, stok değeri, kasa, cari alacak ve açık çek/senet toplamları
 - Günlük puantaj → tarihte geçerli görevlendirmeden proje/şantiye seçimi + tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı

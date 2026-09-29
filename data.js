@@ -29,7 +29,7 @@ window.YAPI360_SECTIONS = {
   },
   progress: {
     title: "Hakedişler", icon: "₺", description: "Dosyalarıyla birlikte hakediş hazırlama, onay ve ödeme akışı.", specialForm: "progress",
-    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
+    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("paidAmount", "Ödenen", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
   },
   cash: {
     title: "Kasa & Finans Hareketleri", icon: "↻", description: "Nakit, dekont, personel, çek ve senet işlemlerinin ilişkili kayıtları.",
