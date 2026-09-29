@@ -3,6 +3,13 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const DB_KEY = "yapi360-workspace-v4";
 const SESSION_KEY = "yapi360-session-v4";
 const money = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 });
+const CASH_TRANSACTION_TYPES = ["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak Dekontu", "Maaş Ödeme", "Avans Ödeme", "Çek Tahsilat", "Çek Ödeme", "Senet Tahsilat", "Senet Ödeme"];
+const CASH_IN = new Set(["Tahsilat"]);
+const CASH_OUT = new Set(["Ödeme", "Maaş Ödeme", "Avans Ödeme"]);
+const CONTACT_TYPES = new Set(["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak Dekontu", "Çek Tahsilat", "Çek Ödeme", "Senet Tahsilat", "Senet Ödeme"]);
+const STAFF_TYPES = new Set(["Maaş Ödeme", "Avans Ödeme"]);
+const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"]);
+const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
 
 const emptyDb = () => ({
   version: 4,
@@ -190,20 +197,31 @@ function renderPage() {
 }
 
 function derivedCash() {
-  const manual = records("cash").map(item => ({ ...item, source: "Manuel" }));
+  const manual = records("cash").map(item => ({
+    ...item,
+    transactionType: item.transactionType || (item.type === "Gelir" ? "Tahsilat" : "Ödeme"),
+    relatedName: item.relatedName || item.category || "Geçmiş kayıt",
+    referenceNo: item.referenceNo || "ESKİ KAYIT",
+    direction: item.direction || (item.type === "Gelir" ? "in" : "out"),
+    affectsCash: item.affectsCash ?? true,
+    source: "İşlem"
+  }));
   const purchases = records("purchases")
-    .filter(item => item.paymentStatus === "Ödendi")
-    .map(item => ({ id: "purchase-" + item.id, date: item.date, type: "Gider", category: "Satın Alma", description: item.supplier + " · " + item.item, amount: item.amount, source: "Alış", automatic: true }));
-  const sales = records("sales")
-    .filter(item => number(item.collected) > 0)
-    .map(item => ({ id: "sale-" + item.id, date: item.date, type: "Gelir", category: "Tahsilat", description: item.customer + " · " + item.unit, amount: item.collected, source: "Satış", automatic: true }));
+    .filter(item => item.paymentStatus === "Ödendi" && !records("cash").some(movement => movement.sourceRecordId === item.id))
+    .map(item => ({ id: "purchase-" + item.id, date: item.date, transactionType: "Ödeme", relatedName: item.supplier, referenceNo: "ALIŞ", description: item.item, amount: item.amount, direction: "out", affectsCash: true, source: "Alış", automatic: true }));
+  const sales = records("sales").map(item => {
+    const linked = records("cash").filter(movement => movement.sourceRecordId === item.id && ["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(movement.transactionType)).reduce((sum, movement) => sum + number(movement.amount), 0);
+    return { item, residual: Math.max(0, number(item.collected) - linked) };
+  })
+    .filter(entry => entry.residual > 0)
+    .map(entry => ({ id: "sale-" + entry.item.id, date: entry.item.date, transactionType: "Tahsilat", relatedName: entry.item.customer, referenceNo: "SATIŞ", description: entry.item.unit, amount: entry.residual, direction: "in", affectsCash: true, source: "Satış", automatic: true }));
   return [...manual, ...purchases, ...sales].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 function totals() {
-  const cash = derivedCash();
-  const income = cash.filter(item => item.type === "Gelir").reduce((sum, item) => sum + number(item.amount), 0);
-  const expense = cash.filter(item => item.type === "Gider").reduce((sum, item) => sum + number(item.amount), 0);
+  const cash = derivedCash().filter(item => item.affectsCash !== false);
+  const income = cash.filter(item => item.direction === "in").reduce((sum, item) => sum + number(item.amount), 0);
+  const expense = cash.filter(item => item.direction === "out").reduce((sum, item) => sum + number(item.amount), 0);
   const salesTotal = records("sales").reduce((sum, item) => sum + number(item.total), 0);
   const collected = records("sales").reduce((sum, item) => sum + number(item.collected), 0);
   return { income, expense, balance: income - expense, salesTotal, collected };
@@ -244,7 +262,7 @@ function renderList(section, sourceRows) {
   const rows = state.page === "cash" ? derivedCash() : sourceRows;
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
-    ${state.page === "cash" ? '<div class="callout">Ödenmiş alışlar ve satış tahsilatları kasa hareketlerine otomatik yansır. Manuel hareket de ekleyebilirsiniz.</div>' : ""}
+    ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
     <div class="toolbar">
       <input class="input search" id="search" placeholder="${section.title} içinde ara…">
       ${addAllowed ? '<button class="btn gold" id="addRecord">+ Yeni Kayıt</button>' : ""}
@@ -267,7 +285,7 @@ function renderRows(query = "") {
     <tr>
       ${fields.map(field => `<td>${formatCell(field, row[field.name], row)}</td>`).join("")}
       <td><div class="actions">
-        ${canEdit() && !row.automatic ? `<button class="btn ghost small" data-edit="${row.id}">Düzenle</button><button class="btn danger small" data-delete="${row.id}">Sil</button>` : '<span class="badge info">Otomatik</span>'}
+        ${canEdit() && !row.automatic ? `${state.page === "cash" ? "" : `<button class="btn ghost small" data-edit="${row.id}">Düzenle</button>`}<button class="btn danger small" data-delete="${row.id}">Sil</button>` : '<span class="badge info">Otomatik</span>'}
       </div></td>
     </tr>
   `).join("") : `<tr><td colspan="${fields.length + 1}">${emptyMessage("Henüz kayıt yok. Yeni kayıt ekleyerek başlayın.")}</td></tr>`;
@@ -276,7 +294,7 @@ function renderRows(query = "") {
 function formatCell(field, value, row) {
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
-  if (["status", "paymentStatus", "type"].includes(field.name)) {
+  if (["status", "paymentStatus", "type", "transactionType"].includes(field.name)) {
     const style = /Gecikme|Kritik|Arızalı|Karşılıksız|Ödenmedi/.test(value) ? "danger" : /Bekliyor|Kısmi|Bakımda|Portföyde/.test(value) ? "warning" : "";
     return `<span class="badge ${style}">${escapeHtml(value || "—")}</span>`;
   }
@@ -297,6 +315,15 @@ function contactSummary() {
   records("contacts").forEach(item => ensure(item.name).opening += number(item.openingBalance));
   records("purchases").forEach(item => ensure(item.supplier).purchases += number(item.amount));
   records("sales").forEach(item => { const row = ensure(item.customer); row.sales += number(item.total); row.collected += number(item.collected); });
+  records("cash").forEach(item => {
+    if (!item.contactName) return;
+    const row = ensure(item.contactName);
+    const amount = number(item.amount);
+    if (["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(item.transactionType) && !item.sourceRecordId) row.collected += amount;
+    if (item.transactionType === "Alacak Dekontu") row.collected += amount;
+    if (["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(item.transactionType)) row.purchases -= amount;
+    if (item.transactionType === "Borç Dekontu") row.sales += amount;
+  });
   return [...map.values()].map(row => ({ ...row, balance: row.opening + row.sales - row.collected - row.purchases }));
 }
 
@@ -306,8 +333,13 @@ function renderContactLedger() {
 }
 
 function renderStaffLedger() {
-  const rows = records("staff").map(item => [item.name, item.role, money.format(number(item.monthlySalary)), money.format(number(item.advance)), money.format(number(item.monthlySalary) - number(item.advance))]);
-  return reportTable(["Personel", "Görev", "Aylık Ücret", "Avans", "Net Hakediş"], rows, "Personel kartındaki ücret ve avans değerlerinden hesaplanır.");
+  const rows = records("staff").map(item => {
+    const movements = records("cash").filter(movement => movement.staffId === item.id);
+    const salaryPaid = movements.filter(movement => movement.transactionType === "Maaş Ödeme").reduce((sum, movement) => sum + number(movement.amount), 0);
+    const advancePaid = number(item.advance) + movements.filter(movement => movement.transactionType === "Avans Ödeme").reduce((sum, movement) => sum + number(movement.amount), 0);
+    return [item.name, item.role, money.format(number(item.monthlySalary)), money.format(salaryPaid), money.format(advancePaid), money.format(number(item.monthlySalary) - salaryPaid - advancePaid)];
+  });
+  return reportTable(["Personel", "Görev", "Aylık Ücret", "Maaş Ödemesi", "Avans", "Kalan"], rows, "Maaş ve avans ödeme fişleri personel kartıyla ilişkilendirilir.");
 }
 
 function renderCostAnalysis() {
@@ -333,7 +365,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.0.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.1.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -389,8 +421,95 @@ function fieldInput(field, value = "") {
   return `<input class="input" id="field-${field.name}" name="${field.name}" type="${field.type}" value="${escapeHtml(value)}"${min}${required}>`;
 }
 
+function optionList(items, selected, label, emptyLabel, optional = false) {
+  const first = optional ? '<option value="">Bağlantı yok</option>' : `<option value="" disabled ${selected ? "" : "selected"}>${emptyLabel}</option>`;
+  return first + items.map(item => `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(label(item))}</option>`).join("");
+}
+
+function eligibleInstruments(transactionType) {
+  const kind = transactionType.startsWith("Çek") ? "Çek" : "Senet";
+  return records("checks").filter(item => item.type.includes(kind) && item.type.startsWith("Alınan") && ["Portföyde", "Tahsil Edildi"].includes(item.status));
+}
+
+function sourceRecords(transactionType) {
+  if (["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(transactionType)) {
+    return records("sales").filter(item => number(item.total) > number(item.collected));
+  }
+  if (["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(transactionType)) {
+    return records("purchases").filter(item => item.paymentStatus !== "Ödendi" && number(item.amount) > number(item.paidAmount));
+  }
+  return [];
+}
+
+function cashRelationFields(transactionType, row = {}) {
+  const contacts = records("contacts");
+  const staff = records("staff");
+  const sources = sourceRecords(transactionType);
+  let html = "";
+
+  if (CONTACT_TYPES.has(transactionType)) {
+    html += `<div class="field"><label for="field-contactId">Cari kayıt</label><select class="select" id="field-contactId" name="contactId" required>${optionList(contacts, row.contactId, item => item.name + " · " + item.type, "Önce cari tanımlayın")}</select></div>`;
+  }
+  if (STAFF_TYPES.has(transactionType)) {
+    html += `<div class="field"><label for="field-staffId">Personel kayıt</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, row.staffId, item => item.name + " · " + item.role, "Önce personel tanımlayın")}</select></div>`;
+  }
+  if (["Ödeme", "Tahsilat", "Çek Tahsilat", "Çek Ödeme", "Senet Tahsilat", "Senet Ödeme"].includes(transactionType)) {
+    const payment = ["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(transactionType);
+    html += `<div class="field"><label for="field-sourceRecordId">Bağlı ${payment ? "alış" : "satış"} kaydı</label><select class="select" id="field-sourceRecordId" name="sourceRecordId">${optionList(sources, row.sourceRecordId, item => payment ? item.supplier + " · " + item.item + " · Kalan " + money.format(number(item.amount) - number(item.paidAmount)) : item.customer + " · " + item.unit + " · Kalan " + money.format(number(item.total) - number(item.collected)), "Bağlamadan kaydet", true)}</select></div>`;
+  }
+  if (COLLECTION_INSTRUMENT_TYPES.has(transactionType)) {
+    html += `
+      <div class="field"><label for="field-instrumentNumber">Belge no</label><input class="input" id="field-instrumentNumber" name="instrumentNumber" value="${escapeHtml(row.instrumentNumber || "")}" required></div>
+      <div class="field"><label for="field-instrumentBank">Banka / düzenleyen</label><input class="input" id="field-instrumentBank" name="instrumentBank" value="${escapeHtml(row.instrumentBank || "")}" required></div>
+      <div class="field"><label for="field-dueDate">Vade tarihi</label><input class="input" id="field-dueDate" name="dueDate" type="date" value="${escapeHtml(row.dueDate || "")}" required></div>`;
+  }
+  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+    const instruments = eligibleInstruments(transactionType);
+    html += `<div class="field"><label for="field-instrumentId">Portföy kaydı</label><select class="select" id="field-instrumentId" name="instrumentId" required>${optionList(instruments, row.instrumentId, item => item.number + " · " + item.party + " · " + money.format(number(item.amount)) + " · " + item.status, "Uygun çek/senet kaydı yok")}</select></div>`;
+  }
+  return html;
+}
+
+function bindCashRelations(transactionType) {
+  $("#field-sourceRecordId")?.addEventListener("change", event => {
+    const source = sourceRecords(transactionType).find(item => item.id === event.target.value);
+    if (!source) return;
+    const payment = ["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(transactionType);
+    const relatedName = payment ? source.supplier : source.customer;
+    const contact = records("contacts").find(item => item.name === relatedName);
+    if (contact && $("#field-contactId")) $("#field-contactId").value = contact.id;
+    if (!PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+      $("#field-amount").value = payment ? Math.max(0, number(source.amount) - number(source.paidAmount)) : Math.max(0, number(source.total) - number(source.collected));
+    }
+  });
+  $("#field-instrumentId")?.addEventListener("change", event => {
+    const instrument = records("checks").find(item => item.id === event.target.value);
+    if (instrument) $("#field-amount").value = number(instrument.amount);
+  });
+}
+
+function openCashModal(id = null) {
+  const row = records("cash").find(item => item.id === id) || {};
+  const transactionType = row.transactionType || CASH_TRANSACTION_TYPES[0];
+  state.editId = id;
+  $("#modalTitle").textContent = "Kasa & Finans Hareketleri — Yeni İşlem";
+  $("#recordFields").innerHTML = `
+    <div class="field"><label for="field-transactionType">İşlem tipi</label><select class="select" id="field-transactionType" name="transactionType" required>${CASH_TRANSACTION_TYPES.map(type => `<option ${type === transactionType ? "selected" : ""}>${type}</option>`).join("")}</select></div>
+    <div class="field"><label for="field-date">İşlem tarihi</label><input class="input" id="field-date" name="date" type="date" value="${escapeHtml(row.date || new Date().toISOString().slice(0, 10))}" required></div>
+    <div id="cashRelationFields" class="form-grid relation-grid">${cashRelationFields(transactionType, row)}</div>
+    <div class="field"><label for="field-amount">Tutar</label><input class="input" id="field-amount" name="amount" type="number" min="0.01" step="0.01" value="${escapeHtml(row.amount || "")}" required></div>
+    <div class="field"><label for="field-description">Açıklama</label><input class="input" id="field-description" name="description" value="${escapeHtml(row.description || "")}" required></div>`;
+  $("#field-transactionType").addEventListener("change", event => {
+    $("#cashRelationFields").innerHTML = cashRelationFields(event.target.value);
+    bindCashRelations(event.target.value);
+  });
+  bindCashRelations(transactionType);
+  $("#recordModal").classList.add("open");
+}
+
 function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
+  if (section.specialForm === "cash") return openCashModal(id);
   const source = state.page === "users" ? state.db.users : records(state.page);
   const row = source.find(item => item.id === id) || {};
   state.editId = id;
@@ -403,6 +522,7 @@ async function saveRecord(event) {
   event.preventDefault();
   const section = window.YAPI360_SECTIONS[state.page];
   const data = Object.fromEntries(new FormData(event.target));
+  if (section.specialForm === "cash") return saveCashRecord(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
@@ -430,6 +550,131 @@ async function saveRecord(event) {
   toast(wasEdit ? "Kayıt güncellendi." : "Kayıt eklendi.");
 }
 
+function saveCashRecord(data) {
+  const transactionType = data.transactionType;
+  const contact = records("contacts").find(item => item.id === data.contactId);
+  const staff = records("staff").find(item => item.id === data.staffId);
+  if (CONTACT_TYPES.has(transactionType) && !contact) return toast("Bu işlem için tanımlı bir cari seçmelisiniz.");
+  if (STAFF_TYPES.has(transactionType) && !staff) return toast("Bu işlem için tanımlı bir personel seçmelisiniz.");
+
+  let instrument = null;
+  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+    instrument = eligibleInstruments(transactionType).find(item => item.id === data.instrumentId);
+    if (!instrument) return toast("Ödemeye uygun portföy kaydı seçmelisiniz.");
+    data.amount = instrument.amount;
+    data.referenceNo = instrument.number;
+    data.instrumentId = instrument.id;
+  }
+
+  if (number(data.amount) <= 0) return toast("İşlem tutarı sıfırdan büyük olmalıdır.");
+  const source = [...records("purchases"), ...records("sales")].find(item => item.id === data.sourceRecordId);
+  const isPayment = ["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(transactionType);
+  const isCollection = ["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(transactionType);
+  if (source) {
+    const sourceName = isPayment ? source.supplier : source.customer;
+    const remaining = isPayment ? number(source.amount) - number(source.paidAmount) : number(source.total) - number(source.collected);
+    if (sourceName !== contact?.name) return toast("Bağlı kayıt ile seçilen cari uyuşmuyor.");
+    if (number(data.amount) > remaining) return toast("İşlem tutarı bağlı kaydın kalan tutarını aşamaz.");
+  }
+
+  if (COLLECTION_INSTRUMENT_TYPES.has(transactionType)) {
+    const instrumentType = transactionType.startsWith("Çek") ? "Alınan Çek" : "Alınan Senet";
+    if (records("checks").some(item => item.type === instrumentType && item.number === data.instrumentNumber)) {
+      return toast("Bu belge numarası daha önce kaydedilmiş.");
+    }
+    instrument = {
+      id: uid(),
+      type: instrumentType,
+      number: data.instrumentNumber,
+      party: contact.name,
+      bank: data.instrumentBank,
+      dueDate: data.dueDate,
+      amount: data.amount,
+      status: "Tahsil Edildi",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    (state.db.records.checks ||= []).push(instrument);
+    data.createdInstrumentId = instrument.id;
+    data.instrumentId = instrument.id;
+    data.referenceNo = instrument.number;
+  }
+
+  const previousInstrumentStatus = PAYMENT_INSTRUMENT_TYPES.has(transactionType) ? instrument.status : "";
+  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+    instrument.status = "Ciro Edildi";
+    instrument.endorsedTo = contact.name;
+    instrument.updatedAt = new Date().toISOString();
+  }
+
+  if (source && isPayment) {
+    source.paidAmount = number(source.paidAmount) + number(data.amount);
+    source.paymentStatus = source.paidAmount >= number(source.amount) ? "Ödendi" : "Kısmi";
+    source.updatedAt = new Date().toISOString();
+  }
+  if (source && isCollection) {
+    source.collected = Math.min(number(source.total), number(source.collected) + number(data.amount));
+    source.status = source.collected >= number(source.total) ? "Tamamlandı" : "Devam Ediyor";
+    source.updatedAt = new Date().toISOString();
+  }
+
+  const movement = {
+    id: uid(),
+    date: data.date,
+    transactionType,
+    contactId: contact?.id || "",
+    contactName: contact?.name || "",
+    staffId: staff?.id || "",
+    staffName: staff?.name || "",
+    relatedName: contact?.name || staff?.name || "—",
+    sourceRecordId: data.sourceRecordId || "",
+    instrumentId: data.instrumentId || "",
+    createdInstrumentId: data.createdInstrumentId || "",
+    previousInstrumentStatus,
+    referenceNo: data.referenceNo || "FİŞ-" + Date.now().toString().slice(-8),
+    amount: data.amount,
+    description: data.description,
+    direction: CASH_IN.has(transactionType) ? "in" : CASH_OUT.has(transactionType) ? "out" : "neutral",
+    affectsCash: CASH_IN.has(transactionType) || CASH_OUT.has(transactionType),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  (state.db.records.cash ||= []).push(movement);
+  audit("Finans işlemi eklendi", transactionType + " · " + movement.relatedName + " · " + money.format(number(movement.amount)));
+  persist();
+  closeModal();
+  renderPage();
+  toast(transactionType + " kaydedildi.");
+}
+
+function reverseCashMovement(movement) {
+  if (movement.createdInstrumentId) {
+    const instruments = state.db.records.checks ||= [];
+    const createdIndex = instruments.findIndex(item => item.id === movement.createdInstrumentId);
+    if (createdIndex >= 0) instruments.splice(createdIndex, 1);
+  } else if (movement.instrumentId && PAYMENT_INSTRUMENT_TYPES.has(movement.transactionType)) {
+    const instrument = records("checks").find(item => item.id === movement.instrumentId);
+    if (instrument) {
+      instrument.status = movement.previousInstrumentStatus || "Tahsil Edildi";
+      delete instrument.endorsedTo;
+      instrument.updatedAt = new Date().toISOString();
+    }
+  }
+
+  if (!movement.sourceRecordId) return;
+  const source = [...records("purchases"), ...records("sales")].find(item => item.id === movement.sourceRecordId);
+  if (!source) return;
+  if (["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(movement.transactionType)) {
+    source.paidAmount = Math.max(0, number(source.paidAmount) - number(movement.amount));
+    source.paymentStatus = source.paidAmount <= 0 ? "Ödenmedi" : source.paidAmount >= number(source.amount) ? "Ödendi" : "Kısmi";
+  }
+  if (["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(movement.transactionType)) {
+    source.collected = Math.max(0, number(source.collected) - number(movement.amount));
+    source.status = source.collected >= number(source.total) ? "Tamamlandı" : "Devam Ediyor";
+  }
+  source.updatedAt = new Date().toISOString();
+}
+
 function recordName(row) {
   return row.name || row.number || row.description || row.customer || row.supplier || row.email || "Kayıt";
 }
@@ -440,6 +685,7 @@ function deleteRecord(id) {
   const index = target.findIndex(item => item.id === id);
   if (index < 0) return;
   if (state.page === "users" && target[index].id === state.user.id) return toast("Aktif kullanıcı kendi hesabını silemez.");
+  if (state.page === "cash") reverseCashMovement(target[index]);
   const [removed] = target.splice(index, 1);
   audit("Kayıt silindi", window.YAPI360_SECTIONS[state.page].title + " · " + recordName(removed));
   persist();
@@ -551,7 +797,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.0.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.1.0", { updateViaCache: "none" });
     registration.update();
   });
 }

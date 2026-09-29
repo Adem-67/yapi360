@@ -20,12 +20,16 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.0.0", "data.js?v=4.0.0", "app.js?v=4.0.0", "manifest.webmanifest?v=4.0.0"]) {
+for (const asset of ["styles.css?v=4.1.0", "data.js?v=4.1.0", "app.js?v=4.1.0", "manifest.webmanifest?v=4.1.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
 if (app.includes("admin@yapi360.demo")) throw new Error("Demo hesabı uygulama kodunda kalmış.");
+for (const type of ["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak Dekontu", "Maaş Ödeme", "Avans Ödeme", "Çek Tahsilat", "Çek Ödeme", "Senet Tahsilat", "Senet Ödeme"]) {
+  if (!app.includes(`"${type}"`)) throw new Error(`Eksik finans işlem tipi: ${type}`);
+}
+if (!app.includes("reverseCashMovement")) throw new Error("Finans işlemi geri alma ilişkisi eksik.");
 
 console.log("Yapı360 doğrulaması başarılı: JS, PWA, DOM ve demo temizliği.");
