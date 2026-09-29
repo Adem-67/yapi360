@@ -1,4 +1,4 @@
-# Yapı360 v4.1
+# Yapı360 v4.2
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -19,12 +19,15 @@
 - Personel ücret ve avans → personel hesap hareketi sonucu
 - Proje bütçesi + projeye bağlı alışlar → bütçe kullanım oranı
 - Kritik seviye altındaki stok → yönetim paneli uyarısı
+- Cari, proje, şantiye, personel ve stok bağlantıları → önceden tanımlı kayıtlardan seçim
+- Günlük puantaj → tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 
 ## Modüller
 
 - Projeler, sözleşmeler, şantiyeler, taşeronlar, hakedişler
 - Kasa, alış, satış-tahsilat, çek-senet
 - Cariler, personeller, stok-hizmetler, demirbaşlar, kategoriler
+- Dönemsel puantaj planı ve CSV dışa aktarma
 - Cari hesap, personel hesap ve maliyet raporları
 - Kullanıcı/rol yönetimi, firma ayarları, işlem geçmişi, JSON yedekleme
 
