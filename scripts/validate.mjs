@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.12.0", "data.js?v=4.12.0", "app.js?v=4.12.0", "manifest.webmanifest?v=4.12.0"]) {
+for (const asset of ["styles.css?v=4.13.0", "data.js?v=4.13.0", "app.js?v=4.13.0", "manifest.webmanifest?v=4.13.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.12.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.13.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -50,6 +50,9 @@ if (!data.includes('bank_accounts') || !app.includes("cashAccountField") || !app
 if (!app.includes("Kendi Çekimiz") || !app.includes("ownCheckPayment") || !app.includes('origin: "Kendi Çekimiz"') || !data.includes('f("origin", "Belge kaynağı"')) throw new Error("Kendi çekimizle ödeme akışı eksik.");
 if (!app.includes("contactLedgerEntries") || !app.includes("contactLedgerStart") || !app.includes("contactLedgerEnd") || !app.includes("printContactLedger") || !app.includes("exportContactLedgerCsv")) throw new Error("Cari tarih aralıklı ekstre, yazdırma veya dışa aktarma akışı eksik.");
 if (!app.includes("Borç / Alacak Raporu") || !app.includes("renderContactBalanceReport") || !app.includes("DİP TOPLAM")) throw new Error("Cari borçlu/alacaklı sekmesi veya dip toplamı eksik.");
+if (!app.includes("contactBalanceFilter") || !app.includes("Yalnızca Borçlu Cariler") || !app.includes("Yalnızca Alacaklı Cariler") || !app.includes("exportContactBalanceReportCsv")) throw new Error("Cari borç/alacak raporu filtresi veya dışa aktarma özelliği eksik.");
+if (!data.includes('f("balance", "Bakiye", "number", { form: false })') || !app.includes("contactRowsWithBalances") || !app.includes("printContactList")) throw new Error("Cari listesi otomatik bakiye veya yazdırma özelliği eksik.");
+if (data.includes('f("taxId", "Vergi / TC no"), f("openingBalance", "Açılış bakiyesi", "number")')) throw new Error("Cari kartında açılış bakiyesi alanı kalmış.");
 if (!data.includes('specialForm: "subcontractor"') || !app.includes("subcontractorContractOptions") || !app.includes("saveSubcontractorRecord")) throw new Error("Taşeron-sözleşme seçim ilişkisi eksik.");
 if (!app.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) throw new Error("Excel dosya desteği eksik.");
 if (manifest.name !== "Yapı360" || !html.includes("<title>İnşaat Yönetim Platformu</title>")) throw new Error("PWA pencere başlığı tekilleştirilmemiş.");

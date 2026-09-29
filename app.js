@@ -48,6 +48,7 @@ const state = {
   sort: { field: "", direction: 1 },
   contactLedgerView: "statement",
   contactLedger: { contactId: "", startDate: "", endDate: "" },
+  contactBalanceFilter: "all",
   timesheetPeriod: new Date().toISOString().slice(0, 7),
   timesheetDate: new Date().toISOString().slice(0, 10)
 };
@@ -219,7 +220,7 @@ function renderPage() {
   else if (special === "settings") $("#content").innerHTML = renderSettings();
   else if (special === "audit") $("#content").innerHTML = renderAudit();
   else if (special === "users") $("#content").innerHTML = renderList(section, state.db.users);
-  else $("#content").innerHTML = renderList(section, state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page));
+  else $("#content").innerHTML = renderList(section, state.page === "bank_accounts" ? bankAccountsWithBalances() : state.page === "contacts" ? contactRowsWithBalances() : records(state.page));
   bindPage();
 }
 
@@ -366,13 +367,15 @@ function renderList(section, sourceRows) {
     ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
     ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
+    ${state.page === "contacts" ? `<div class="contact-print-heading"><strong>Yapı360 · Cari Listesi</strong><span>${escapeHtml(state.db.company?.name || "")} · ${escapeHtml(new Date().toLocaleDateString("tr-TR"))}</span></div>` : ""}
     <div class="toolbar">
       <input class="input search" id="search" placeholder="${section.title} içinde ara…">
       ${addAllowed ? `<button class="btn gold" id="addRecord">${state.page === "warehouse" ? "+ Yeni Sevkiyat" : "+ Yeni Kayıt"}</button>` : ""}
-      <button class="btn ghost" id="exportCsv">CSV Dışa Aktar</button>
+      <button class="btn ghost" id="exportCsv">${state.page === "contacts" ? "Cari Listesini Dışa Aktar" : "CSV Dışa Aktar"}</button>
+      ${state.page === "contacts" ? '<button class="btn ghost" id="printContactList">Yazdır / PDF Kaydet</button>' : ""}
     </div>
     <div class="table-wrap"><table class="table"><thead><tr>
-      ${tableFields(section).map(field => `<th><button class="sort" data-sort="${field.name}">${field.label} ↕</button></th>`).join("")}
+      ${tableFields(section).map(field => `<th><button class="sort" data-sort="${field.name}" data-print-label="${escapeHtml(field.label)}">${field.label} ↕</button></th>`).join("")}
       <th>İşlem</th>
     </tr></thead><tbody id="tableBody"></tbody></table></div>
   `;
@@ -390,7 +393,7 @@ function renderWarehouseStockOverview() {
 function renderRows(query = "") {
   const section = window.YAPI360_SECTIONS[state.page];
   const fields = tableFields(section);
-  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page);
+  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : state.page === "contacts" ? contactRowsWithBalances() : records(state.page);
   let rows = source.filter(row => fields.some(field => String(row[field.name] ?? "").toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))));
   if (state.sort.field) rows = [...rows].sort((a, b) => String(a[state.sort.field] ?? "").localeCompare(String(b[state.sort.field] ?? ""), "tr", { numeric: true }) * state.sort.direction);
   $("#tableBody").innerHTML = rows.length ? rows.map(row => `
@@ -418,6 +421,7 @@ function formatCell(field, value, row) {
     const documents = Array.isArray(row.documents) ? row.documents : [];
     return `<span class="badge ${documents.length ? "" : "warning"}">${documents.length} dosya</span>`;
   }
+  if (field.name === "balance") return `<strong class="${number(value) > 0 ? "metric-negative" : number(value) < 0 ? "metric-positive" : ""}">${escapeHtml(ledgerBalanceText(value))}</strong>`;
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
   if (["status", "paymentStatus", "type", "transactionType", "movementType"].includes(field.name)) {
@@ -435,10 +439,10 @@ function contactSummary() {
   const map = new Map();
   const ensure = name => {
     const key = name || "Tanımsız";
-    if (!map.has(key)) map.set(key, { name: key, sales: 0, purchases: 0, collected: 0, opening: 0 });
+    if (!map.has(key)) map.set(key, { name: key, sales: 0, purchases: 0, collected: 0 });
     return map.get(key);
   };
-  records("contacts").forEach(item => ensure(item.name).opening += number(item.openingBalance));
+  records("contacts").forEach(item => ensure(item.name));
   records("purchases").forEach(item => ensure(item.supplier).purchases += number(item.amount));
   records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status)).forEach(item => ensure(item.subcontractor).purchases += number(item.amount));
   records("sales").forEach(item => { const row = ensure(item.customer); row.sales += number(item.total); row.collected += number(item.collected); });
@@ -451,7 +455,7 @@ function contactSummary() {
     if (["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(item.transactionType)) row.purchases -= amount;
     if (item.transactionType === "Borç Dekontu") row.sales += amount;
   });
-  return [...map.values()].map(row => ({ ...row, balance: row.opening + row.sales - row.collected - row.purchases }));
+  return [...map.values()].map(row => ({ ...row, balance: row.sales - row.collected - row.purchases }));
 }
 
 function renderContactLedger() {
@@ -486,17 +490,14 @@ function renderContactLedger() {
 }
 
 function renderContactBalanceReport() {
-  const rows = records("contacts").map(contact => ({
-    id: contact.id,
-    name: contact.name,
-    type: contact.type,
-    balance: contactLedgerEntries(contact).reduce((balance, item) => balance + item.debit - item.credit, number(contact.openingBalance))
-  })).filter(item => number(item.balance) !== 0).sort((a, b) => Math.abs(number(b.balance)) - Math.abs(number(a.balance)));
+  const rows = filteredContactBalanceRows();
   const totalDebtors = rows.reduce((sum, item) => sum + Math.max(0, number(item.balance)), 0);
   const totalCreditors = rows.reduce((sum, item) => sum + Math.max(0, -number(item.balance)), 0);
   const difference = totalDebtors - totalCreditors;
+  const filterLabels = { all: "Tüm Bakiyeli Cariler", debtors: "Borçlu Cariler", creditors: "Alacaklı Cariler" };
   return `
     <div class="ledger-title"><div><span class="eyebrow">CARİ BAKİYE RAPORU</span><h3>Borçlu ve Alacaklı Cariler</h3><p>Güncel cari bakiyeler ve toplam fark</p></div><span class="badge">${rows.length} bakiyeli cari</span></div>
+    <section class="panel balance-filter-panel"><div class="balance-filter-controls"><div class="field"><label for="contactBalanceFilter">Rapor türü</label><select class="select" id="contactBalanceFilter"><option value="all" ${state.contactBalanceFilter === "all" ? "selected" : ""}>Tüm Bakiyeli Cariler</option><option value="debtors" ${state.contactBalanceFilter === "debtors" ? "selected" : ""}>Yalnızca Borçlu Cariler</option><option value="creditors" ${state.contactBalanceFilter === "creditors" ? "selected" : ""}>Yalnızca Alacaklı Cariler</option></select></div><button class="btn" id="exportContactBalanceReport" type="button">Seçili Raporu Dışa Aktar</button></div><small>${escapeHtml(filterLabels[state.contactBalanceFilter])} gösteriliyor.</small></section>
     <div class="ledger-metrics balance-metrics">
       <article><small>BORÇLU CARİLER TOPLAMI</small><strong class="metric-negative">${escapeHtml(money.format(totalDebtors))}</strong></article>
       <article><small>ALACAKLI CARİLER TOPLAMI</small><strong class="metric-positive">${escapeHtml(money.format(totalCreditors))}</strong></article>
@@ -507,8 +508,24 @@ function renderContactBalanceReport() {
       ${rows.length ? rows.map(row => {
         const balance = number(row.balance);
         return `<tr><td><strong>${escapeHtml(row.name)}</strong></td><td>${escapeHtml(row.type || "—")}</td><td><span class="badge ${balance > 0 ? "danger" : ""}">${balance > 0 ? "Borçlu" : "Alacaklı"}</span></td><td>${balance > 0 ? escapeHtml(money.format(balance)) : "—"}</td><td>${balance < 0 ? escapeHtml(money.format(Math.abs(balance))) : "—"}</td><td><button class="btn ghost small" data-ledger-contact="${row.id}">Ekstreyi Aç</button></td></tr>`;
-      }).join("") : `<tr><td colspan="6">${emptyMessage("Borç veya alacak bakiyesi bulunan cari yok.")}</td></tr>`}
+      }).join("") : `<tr><td colspan="6">${emptyMessage(state.contactBalanceFilter === "debtors" ? "Borç bakiyesi bulunan cari yok." : state.contactBalanceFilter === "creditors" ? "Alacak bakiyesi bulunan cari yok." : "Borç veya alacak bakiyesi bulunan cari yok.")}</td></tr>`}
     </tbody><tfoot><tr><th colspan="3">DİP TOPLAM</th><th>${escapeHtml(money.format(totalDebtors))}</th><th>${escapeHtml(money.format(totalCreditors))}</th><th>${escapeHtml(ledgerBalanceText(difference))}</th></tr></tfoot></table></div>`;
+}
+
+function contactBalanceRows() {
+  return records("contacts").map(contact => ({
+    id: contact.id,
+    name: contact.name,
+    type: contact.type,
+    balance: contactCurrentBalance(contact)
+  })).filter(item => number(item.balance) !== 0).sort((a, b) => Math.abs(number(b.balance)) - Math.abs(number(a.balance)));
+}
+
+function filteredContactBalanceRows() {
+  const rows = contactBalanceRows();
+  if (state.contactBalanceFilter === "debtors") return rows.filter(item => number(item.balance) > 0);
+  if (state.contactBalanceFilter === "creditors") return rows.filter(item => number(item.balance) < 0);
+  return rows;
 }
 
 function ledgerRecordDate(row) {
@@ -557,6 +574,14 @@ function contactLedgerEntries(contact) {
   return entries.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.id.localeCompare(b.id));
 }
 
+function contactCurrentBalance(contact) {
+  return contactLedgerEntries(contact).reduce((balance, item) => balance + item.debit - item.credit, 0);
+}
+
+function contactRowsWithBalances() {
+  return records("contacts").map(contact => ({ ...contact, balance: contactCurrentBalance(contact) }));
+}
+
 function ledgerBalanceText(balance) {
   const amount = number(balance);
   if (!amount) return money.format(0);
@@ -567,7 +592,7 @@ function contactLedgerStatement(contact) {
   const allEntries = contactLedgerEntries(contact);
   const startDate = state.contactLedger.startDate;
   const endDate = state.contactLedger.endDate;
-  const opening = allEntries.filter(item => startDate && item.date && item.date < startDate).reduce((balance, item) => balance + item.debit - item.credit, number(contact.openingBalance));
+  const opening = allEntries.filter(item => startDate && item.date && item.date < startDate).reduce((balance, item) => balance + item.debit - item.credit, 0);
   const entries = allEntries.filter(item => (!startDate || !item.date || item.date >= startDate) && (!endDate || !item.date || item.date <= endDate));
   let running = opening;
   return {
@@ -596,7 +621,7 @@ function renderContactLedgerStatement(contact) {
       </div>
       <div class="callout ledger-explanation">Borç sütunu satışları ve cariye yapılan ödemeleri; alacak sütunu alış, onaylı hakediş ve cariden yapılan tahsilatları gösterir.</div>
       <div class="table-wrap"><table class="table ledger-table"><thead><tr><th>Tarih</th><th>İşlem</th><th>Belge / Referans</th><th>Açıklama</th><th>Borç</th><th>Alacak</th><th>Bakiye</th></tr></thead><tbody>
-        ${state.contactLedger.startDate || number(contact.openingBalance) ? `<tr class="ledger-opening"><td>${state.contactLedger.startDate ? escapeHtml(formatDate(state.contactLedger.startDate)) : "—"}</td><td>Devreden Bakiye</td><td>—</td><td>Dönem başlangıcı</td><td>—</td><td>—</td><td>${escapeHtml(ledgerBalanceText(statement.opening))}</td></tr>` : ""}
+        ${state.contactLedger.startDate ? `<tr class="ledger-opening"><td>${escapeHtml(formatDate(state.contactLedger.startDate))}</td><td>Devreden Bakiye</td><td>—</td><td>Dönem başlangıcı</td><td>—</td><td>—</td><td>${escapeHtml(ledgerBalanceText(statement.opening))}</td></tr>` : ""}
         ${statement.entries.length ? statement.entries.map(item => `<tr><td>${item.date ? escapeHtml(formatDate(item.date)) : "—"}</td><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.reference)}</td><td>${escapeHtml(item.description)}</td><td>${item.debit ? escapeHtml(money.format(item.debit)) : "—"}</td><td>${item.credit ? escapeHtml(money.format(item.credit)) : "—"}</td><td>${escapeHtml(ledgerBalanceText(item.balance))}</td></tr>`).join("") : `<tr><td colspan="7">${emptyMessage("Seçilen tarih aralığında hareket bulunamadı.")}</td></tr>`}
       </tbody></table></div>
       <div class="ledger-print-footer">${escapeHtml(state.db.company?.name || "Yapı360")} · ${escapeHtml(new Date().toLocaleString("tr-TR"))}</div>
@@ -618,6 +643,8 @@ function bindContactLedgerPage() {
   $("#clearContactLedger")?.addEventListener("click", () => { state.contactLedger = { contactId: "", startDate: "", endDate: "" }; renderPage(); });
   $("#exportContactLedger")?.addEventListener("click", exportContactLedgerCsv);
   $("#printContactLedger")?.addEventListener("click", () => window.print());
+  $("#contactBalanceFilter")?.addEventListener("change", event => { state.contactBalanceFilter = event.target.value; renderPage(); });
+  $("#exportContactBalanceReport")?.addEventListener("click", exportContactBalanceReportCsv);
   $$('[data-ledger-view]').forEach(button => button.addEventListener("click", () => { state.contactLedgerView = button.dataset.ledgerView; renderPage(); }));
   $$('[data-ledger-contact]').forEach(button => button.addEventListener("click", () => { state.contactLedgerView = "statement"; state.contactLedger.contactId = button.dataset.ledgerContact; renderPage(); }));
 }
@@ -638,6 +665,28 @@ function exportContactLedgerCsv() {
   const safeName = contact.name.toLocaleLowerCase("tr").replace(/[^a-z0-9çğıöşü]+/gi, "-").replace(/^-|-$/g, "");
   downloadFile(`yapi360-cari-ekstre-${safeName || "cari"}.csv`, "\ufeff" + csv, "text/csv;charset=utf-8");
   toast("Cari ekstresi Excel uyumlu CSV olarak hazırlandı.");
+}
+
+function exportContactBalanceReportCsv() {
+  const rows = filteredContactBalanceRows();
+  const totalDebtors = rows.reduce((sum, item) => sum + Math.max(0, number(item.balance)), 0);
+  const totalCreditors = rows.reduce((sum, item) => sum + Math.max(0, -number(item.balance)), 0);
+  const difference = totalDebtors - totalCreditors;
+  const filterLabels = { all: "Tüm Bakiyeli Cariler", debtors: "Borçlu Cariler", creditors: "Alacaklı Cariler" };
+  const csvRows = [
+    ["Cari Bakiye Raporu", filterLabels[state.contactBalanceFilter]],
+    ["Rapor tarihi", new Date().toLocaleDateString("tr-TR")],
+    [],
+    ["Cari", "Cari Türü", "Durum", "Borç Bakiyesi", "Alacak Bakiyesi"],
+    ...rows.map(item => [item.name, item.type, number(item.balance) > 0 ? "Borçlu" : "Alacaklı", number(item.balance) > 0 ? number(item.balance) : "", number(item.balance) < 0 ? Math.abs(number(item.balance)) : ""]),
+    [],
+    ["DİP TOPLAM", "", "", totalDebtors, totalCreditors],
+    ["NET FARK", ledgerBalanceText(difference)]
+  ];
+  const csv = csvRows.map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(";")).join("\n");
+  const suffix = state.contactBalanceFilter === "debtors" ? "borclu-cariler" : state.contactBalanceFilter === "creditors" ? "alacakli-cariler" : "borc-alacak";
+  downloadFile(`yapi360-${suffix}-raporu.csv`, "\ufeff" + csv, "text/csv;charset=utf-8");
+  toast("Seçili cari bakiye raporu dışa aktarıldı.");
 }
 
 function renderStaffLedger() {
@@ -875,7 +924,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.12.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.13.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -912,6 +961,7 @@ function bindPage() {
   $("#search").addEventListener("input", event => renderRows(event.target.value));
   $("#addRecord")?.addEventListener("click", () => openModal());
   $("#exportCsv").addEventListener("click", exportCsv);
+  $("#printContactList")?.addEventListener("click", printContactList);
   $$("[data-sort]").forEach(button => button.addEventListener("click", () => {
     const field = button.dataset.sort;
     state.sort.direction = state.sort.field === field ? -state.sort.direction : 1;
@@ -2276,16 +2326,30 @@ function saveSettings(event) {
 function exportCsv() {
   const section = window.YAPI360_SECTIONS[state.page];
   const fields = tableFields(section);
-  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page);
+  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : state.page === "contacts" ? contactRowsWithBalances() : records(state.page);
   const exportValue = (field, row) => {
     if (field.type === "staffPhoto") return row.photo?.name || "";
     if (["staffDocuments", "contractDocuments", "progressDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
+    if (field.name === "balance") return ledgerBalanceText(row.balance);
     return row[field.name] ?? "";
   };
   const csv = [fields.map(field => field.label), ...source.map(row => fields.map(field => exportValue(field, row)))]
     .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
-  downloadFile("yapi360-" + state.page + ".csv", "\ufeff" + csv, "text/csv");
-  toast("CSV dosyası hazırlandı.");
+  downloadFile(state.page === "contacts" ? "yapi360-cari-listesi.csv" : "yapi360-" + state.page + ".csv", "\ufeff" + csv, "text/csv");
+  toast(state.page === "contacts" ? "Cari listesi bakiyelerle birlikte dışa aktarıldı." : "CSV dosyası hazırlandı.");
+}
+
+function printContactList() {
+  const previousTitle = document.title;
+  const cleanup = () => {
+    document.body.classList.remove("printing-contact-list");
+    document.title = previousTitle;
+  };
+  document.body.classList.add("printing-contact-list");
+  document.title = "Cari Listesi - " + (state.db.company?.name || "Yapı360");
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.print();
+  setTimeout(cleanup, 1000);
 }
 
 function backupData() {
@@ -2373,7 +2437,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.12.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.13.0", { updateViaCache: "none" });
     registration.update();
   });
 }
