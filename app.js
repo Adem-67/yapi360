@@ -1,5 +1,7 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const STANDALONE_MODE = window.matchMedia("(display-mode: standalone)").matches;
+document.title = STANDALONE_MODE ? "Yönetim Paneli" : "Yapı360 | İnşaat Yönetim Platformu";
 const DB_KEY = "yapi360-workspace-v4";
 const SESSION_KEY = "yapi360-session-v4";
 const money = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 });
@@ -10,8 +12,8 @@ const CONTACT_TYPES = new Set(["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak De
 const STAFF_TYPES = new Set(["Maaş Ödeme", "Avans Ödeme"]);
 const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"]);
 const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
-const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "sites", "staff", "inventory"]);
-const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "contracts", "sites", "staff", "inventory"]);
+const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
 const MAX_STAFF_DOCUMENT_BYTES = 1500000;
 const MAX_STAFF_DOCUMENT_TOTAL_BYTES = 2500000;
 const REFERENCE_FIELDS = {
@@ -19,6 +21,7 @@ const REFERENCE_FIELDS = {
   projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"] },
   sites: { assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"] },
   staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"] },
+  contracts: { subcontractors: ["contract"] },
   inventory: { purchases: ["item"], warehouse: ["itemName"] },
   subcontractors: { warehouse: ["subcontractor"] }
 };
@@ -39,6 +42,7 @@ const state = {
   user: null,
   editId: null,
   staffDraft: null,
+  contractDraft: null,
   sort: { field: "", direction: 1 },
   timesheetPeriod: new Date().toISOString().slice(0, 7),
   timesheetDate: new Date().toISOString().slice(0, 10)
@@ -191,6 +195,7 @@ function navigate(page) {
   history.replaceState(null, "", "#" + page);
   $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
   const section = window.YAPI360_SECTIONS[page];
+  if (STANDALONE_MODE) document.title = section.title;
   $("#pageTitle").textContent = section.title;
   $("#pageDescription").textContent = section.description;
   closeSidebar();
@@ -331,6 +336,10 @@ function formatCell(field, value, row) {
     const documents = [row.entryDocument, row.exitDocument, ...(Array.isArray(row.documents) ? row.documents : [])].filter(Boolean);
     const complete = row.entryDocument && (row.status !== "Ayrıldı" || row.exitDocument);
     return `<span class="badge ${complete ? "" : "warning"}">${documents.length} evrak${complete ? "" : " · eksik"}</span>`;
+  }
+  if (field.type === "contractDocuments") {
+    const documents = Array.isArray(row.documents) ? row.documents : [];
+    return `<span class="badge ${documents.length ? "" : "warning"}">${documents.length} dosya</span>`;
   }
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
@@ -607,7 +616,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.6.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.7.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -819,6 +828,118 @@ function openWarehouseModal() {
   $("#recordModal").classList.add("open");
 }
 
+function contractDocumentBytes(draft = state.contractDraft) {
+  return (draft?.documents || []).reduce((sum, file) => sum + number(file.size), 0);
+}
+
+function contractAttachmentCard(file, index) {
+  return `<article class="staff-file-card"><span class="staff-file-icon">▤</span><div><strong>${escapeHtml(file.name)}</strong><small>${staffFileSize(file.size)}</small></div><button class="btn ghost small" type="button" data-contract-file-download="${index}">İndir</button><button class="btn danger small" type="button" data-contract-file-remove="${index}">Kaldır</button></article>`;
+}
+
+function renderContractDraftFiles() {
+  if (!state.contractDraft) return;
+  if ($("#contractDocuments")) $("#contractDocuments").innerHTML = state.contractDraft.documents.length
+    ? state.contractDraft.documents.map(contractAttachmentCard).join("")
+    : '<span class="staff-file-empty">Henüz sözleşme dosyası eklenmedi.</span>';
+  if ($("#contractDocumentUsage")) $("#contractDocumentUsage").textContent = `${staffFileSize(contractDocumentBytes())} / ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)}`;
+}
+
+function bindContractForm() {
+  bindStaffFileInput("#contractFiles", async files => {
+    const additions = await Promise.all(files.map(createStaffDocument));
+    if (contractDocumentBytes() + additions.reduce((sum, file) => sum + file.size, 0) > MAX_STAFF_DOCUMENT_TOTAL_BYTES) throw new Error(`Sözleşme dosyalarının toplamı ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)} sınırını aşamaz.`);
+    state.contractDraft.documents.push(...additions);
+    renderContractDraftFiles();
+  });
+  $("#recordFields").onclick = event => {
+    const download = event.target.closest("[data-contract-file-download]");
+    const remove = event.target.closest("[data-contract-file-remove]");
+    if (download) {
+      const file = state.contractDraft.documents[number(download.dataset.contractFileDownload)];
+      if (file?.dataUrl) {
+        const anchor = document.createElement("a");
+        anchor.href = file.dataUrl;
+        anchor.download = file.name;
+        anchor.click();
+      }
+    }
+    if (remove) {
+      state.contractDraft.documents.splice(number(remove.dataset.contractFileRemove), 1);
+      renderContractDraftFiles();
+    }
+  };
+  renderContractDraftFiles();
+}
+
+function openContractModal(id = null) {
+  const section = window.YAPI360_SECTIONS.contracts;
+  const row = records("contracts").find(item => item.id === id) || {};
+  state.editId = id;
+  state.contractDraft = { documents: Array.isArray(row.documents) ? [...row.documents] : [] };
+  $("#recordModal").classList.add("contract-modal");
+  $("#modalTitle").textContent = "Sözleşme" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  const partyField = section.fields.find(field => field.name === "party");
+  const projectField = section.fields.find(field => field.name === "project");
+  $("#recordFields").innerHTML = `
+    <div class="field full-field"><label for="field-name">Sözleşme adı</label><input class="input" id="field-name" name="name" value="${escapeHtml(row.name || "")}" required></div>
+    <div class="field"><label for="field-party">Taraf / cari</label>${fieldInput(partyField, row.party || "")}</div>
+    <div class="field"><label for="field-project">Proje</label>${fieldInput(projectField, row.project || "")}</div>
+    <div class="field"><label for="field-startDate">Başlangıç tarihi</label><input class="input" id="field-startDate" name="startDate" type="date" value="${escapeHtml(row.startDate || row.date || "")}" required></div>
+    <div class="field"><label for="field-endDate">Bitiş tarihi</label><input class="input" id="field-endDate" name="endDate" type="date" value="${escapeHtml(row.endDate || "")}" required></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"].map(status => `<option ${status === (row.status || "Taslak") ? "selected" : ""}>${status}</option>`).join("")}</select></div>
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Sözleşme Dosyaları</strong><small>İmzalı sözleşme, ek protokol, Excel ve ilgili belgeleri ekleyebilirsiniz. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="contractFiles">Dosya Ekle</label><input id="contractFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" multiple hidden></div><div id="contractDocuments" class="staff-file-list"></div><small class="staff-storage-note">Dosya kullanımı: <strong id="contractDocumentUsage"></strong></small></section>`;
+  bindContractForm();
+  $("#recordModal").classList.add("open");
+}
+
+function subcontractorContracts(contactName) {
+  return records("contracts").filter(item => item.party === contactName);
+}
+
+function subcontractorContractOptions(contactName, selectedId = "", selectedName = "") {
+  const contracts = subcontractorContracts(contactName);
+  const selected = selectedId || contracts.find(item => item.name === selectedName)?.id || "";
+  const legacy = selectedName && !contracts.some(item => item.name === selectedName)
+    ? `<option value="" selected>${escapeHtml(selectedName)} · eski/uyumsuz kayıt</option>` : "";
+  return `<option value="" disabled ${selected || legacy ? "" : "selected"}>${contactName ? "Bu cariye ait sözleşme seçin" : "Önce taşeron cariyi seçin"}</option>${legacy}${contracts.map(item => `<option value="${item.id}" ${item.id === selected ? "selected" : ""}>${escapeHtml(item.name)} · ${formatDate(item.startDate || item.date)} – ${formatDate(item.endDate)}</option>`).join("")}`;
+}
+
+function namedRelationOptions(items, selected, emptyLabel) {
+  return `<option value="" disabled ${selected ? "" : "selected"}>${emptyLabel}</option>${items.map(item => `<option value="${escapeHtml(item.name)}" ${item.name === selected ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}`;
+}
+
+function bindSubcontractorForm() {
+  const contact = $("#field-name");
+  const contract = $("#field-contractId");
+  const project = $("#field-project");
+  contact?.addEventListener("change", event => {
+    contract.innerHTML = subcontractorContractOptions(event.target.value);
+    project.value = "";
+  });
+  contract?.addEventListener("change", event => {
+    const selected = records("contracts").find(item => item.id === event.target.value);
+    if (selected) project.value = selected.project;
+  });
+}
+
+function openSubcontractorModal(id = null) {
+  const row = records("subcontractors").find(item => item.id === id) || {};
+  const contacts = records("contacts").filter(item => item.type === "Taşeron");
+  const projects = records("projects");
+  state.editId = id;
+  $("#modalTitle").textContent = "Taşeron" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label for="field-name">Taşeron / cari</label><select class="select" id="field-name" name="name" required>${namedRelationOptions(contacts, row.name || "", "Önce Taşeron türünde cari tanımlayın")}</select></div>
+    <div class="field"><label for="field-contractId">Sözleşme</label><select class="select" id="field-contractId" name="contractId" required>${subcontractorContractOptions(row.name || "", row.contractId || "", row.contract || "")}</select></div>
+    <div class="field"><label for="field-specialty">Uzmanlık</label><input class="input" id="field-specialty" name="specialty" value="${escapeHtml(row.specialty || "")}" required></div>
+    <div class="field"><label for="field-project">Proje</label><select class="select" id="field-project" name="project" required>${namedRelationOptions(projects, row.project || "", "Önce proje tanımlayın")}</select></div>
+    <div class="field"><label for="field-materialProvision">Malzeme sorumluluğu</label><select class="select" id="field-materialProvision" name="materialProvision" required><option ${row.materialProvision !== "Firma Sağlar" ? "selected" : ""}>Taşeron Sağlar</option><option ${row.materialProvision === "Firma Sağlar" ? "selected" : ""}>Firma Sağlar</option></select></div>
+    <div class="field"><label for="field-contractAmount">Sözleşme tutarı</label><input class="input" id="field-contractAmount" name="contractAmount" type="number" min="0" step="0.01" value="${escapeHtml(row.contractAmount || "")}" required></div>
+    <div class="field"><label for="field-paid">Ödenen</label><input class="input" id="field-paid" name="paid" type="number" min="0" step="0.01" value="${escapeHtml(row.paid ?? "0")}" required></div>`;
+  bindSubcontractorForm();
+  $("#recordModal").classList.add("open");
+}
+
 function staffFileSize(size = 0) {
   if (size < 1024) return size + " B";
   if (size < 1024 * 1024) return (size / 1024).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " KB";
@@ -861,8 +982,8 @@ async function createStaffPhoto(file) {
 }
 
 async function createStaffDocument(file) {
-  const extensionAllowed = /\.(pdf|jpe?g|png|webp|docx?)$/i.test(file.name);
-  if (!STAFF_DOCUMENT_TYPES.has(file.type) && !extensionAllowed) throw new Error("Evrak PDF, JPG, PNG, WebP, DOC veya DOCX biçiminde olmalıdır.");
+  const extensionAllowed = /\.(pdf|jpe?g|png|webp|docx?|xlsx?)$/i.test(file.name);
+  if (!STAFF_DOCUMENT_TYPES.has(file.type) && !extensionAllowed) throw new Error("Evrak PDF, JPG, PNG, WebP, DOC, DOCX, XLS veya XLSX biçiminde olmalıdır.");
   if (file.size > MAX_STAFF_DOCUMENT_BYTES) throw new Error(`${file.name} en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)} olabilir.`);
   return { id: uid(), name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl: await readFileDataUrl(file), addedAt: new Date().toISOString() };
 }
@@ -988,9 +1109,9 @@ function openStaffModal(id = null) {
     <div class="field"><label for="field-hireDate">İşe giriş tarihi</label><input class="input" id="field-hireDate" name="hireDate" type="date" value="${escapeHtml(row.hireDate || "")}" required></div>
     <div class="field"><label for="field-monthlySalary">Aylık ücret</label><input class="input" id="field-monthlySalary" name="monthlySalary" type="number" min="0" step="0.01" value="${escapeHtml(row.monthlySalary || "")}" required></div>
     <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required><option ${row.status === "Aktif" || !row.status ? "selected" : ""}>Aktif</option><option ${row.status === "İzinli" ? "selected" : ""}>İzinli</option><option ${row.status === "Ayrıldı" ? "selected" : ""}>Ayrıldı</option></select></div>
-    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>İşe giriş evrakı</strong><small>Personel kaydı için zorunludur.</small></div><label class="btn ghost small" for="staffEntryFile">Dosya Seç</label><input id="staffEntryFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" hidden></div><div id="staffEntryDocument"></div></section>
-    <section class="staff-document-section full-field" id="staffExitSection" hidden><div class="staff-section-head"><div><strong>İşten çıkış evrakı</strong><small>Personel “Ayrıldı” durumuna geçtiğinde tarih ve evrak zorunludur.</small></div><label class="btn ghost small" for="staffExitFile">Dosya Seç</label><input id="staffExitFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" hidden></div><div class="field"><label for="field-exitDate">İşten çıkış tarihi</label><input class="input" id="field-exitDate" name="exitDate" type="date" value="${escapeHtml(row.exitDate || "")}"></div><div id="staffExitDocument"></div></section>
-    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Diğer personel dosyaları</strong><small>Kimlik, sözleşme, sertifika ve benzeri evraklar. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="staffExtraFiles">Dosya Ekle</label><input id="staffExtraFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" multiple hidden></div><div id="staffExtraDocuments" class="staff-file-list"></div><small class="staff-storage-note">Evrak kullanımı: <strong id="staffDocumentUsage"></strong></small></section>`;
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>İşe giriş evrakı</strong><small>Personel kaydı için zorunludur.</small></div><label class="btn ghost small" for="staffEntryFile">Dosya Seç</label><input id="staffEntryFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" hidden></div><div id="staffEntryDocument"></div></section>
+    <section class="staff-document-section full-field" id="staffExitSection" hidden><div class="staff-section-head"><div><strong>İşten çıkış evrakı</strong><small>Personel “Ayrıldı” durumuna geçtiğinde tarih ve evrak zorunludur.</small></div><label class="btn ghost small" for="staffExitFile">Dosya Seç</label><input id="staffExitFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" hidden></div><div class="field"><label for="field-exitDate">İşten çıkış tarihi</label><input class="input" id="field-exitDate" name="exitDate" type="date" value="${escapeHtml(row.exitDate || "")}"></div><div id="staffExitDocument"></div></section>
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Diğer personel dosyaları</strong><small>Kimlik, sözleşme, sertifika ve benzeri evraklar. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="staffExtraFiles">Dosya Ekle</label><input id="staffExtraFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" multiple hidden></div><div id="staffExtraDocuments" class="staff-file-list"></div><small class="staff-storage-note">Evrak kullanımı: <strong id="staffDocumentUsage"></strong></small></section>`;
   bindStaffForm();
   $("#recordModal").classList.add("open");
 }
@@ -1018,6 +1139,8 @@ function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
   if (section.specialForm === "cash") return openCashModal(id);
   if (section.specialForm === "warehouse") return openWarehouseModal();
+  if (section.specialForm === "contract") return openContractModal(id);
+  if (section.specialForm === "subcontractor") return openSubcontractorModal(id);
   if (section.specialForm === "staff") return openStaffModal(id);
   if (section.specialForm === "staffAssignment") return openStaffAssignmentModal(id);
   const source = state.page === "users" ? state.db.users : records(state.page);
@@ -1176,6 +1299,93 @@ function reversePurchaseInventory(purchase) {
   warehouse.splice(warehouse.indexOf(movement), 1);
 }
 
+function saveContractRecord(data) {
+  const target = state.db.records.contracts ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const wasEdit = Boolean(row);
+  const previousRow = row ? { ...row, documents: [...(row.documents || [])] } : null;
+  const name = data.name.trim();
+  const party = records("contacts").find(item => item.name === data.party);
+  const project = records("projects").find(item => item.name === data.project);
+  if (!party || !project) return toast("Sözleşme için tanımlı cari ve proje seçmelisiniz.");
+  if (target.some(item => item.id !== state.editId && item.name.toLocaleLowerCase("tr") === name.toLocaleLowerCase("tr"))) return toast("Bu adla daha önce bir sözleşme oluşturulmuş.");
+  if (data.endDate < data.startDate) return toast("Sözleşme bitiş tarihi başlangıç tarihinden önce olamaz.");
+  if (contractDocumentBytes() > MAX_STAFF_DOCUMENT_TOTAL_BYTES) return toast("Sözleşme dosyalarının toplam boyutu sınırı aşıyor.");
+  const previousName = row?.name;
+  const contract = {
+    name,
+    party: party.name,
+    project: project.name,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    status: data.status,
+    documents: state.contractDraft.documents,
+    updatedAt: new Date().toISOString()
+  };
+  if (row) {
+    if (previousName && previousName !== name) updateNamedReferences("contracts", row.id, previousName, name);
+    Object.assign(row, contract);
+    delete row.date;
+  } else {
+    row = { id: uid(), ...contract, createdAt: new Date().toISOString() };
+    target.push(row);
+  }
+  audit(wasEdit ? "Sözleşme güncellendi" : "Sözleşme oluşturuldu", name);
+  try {
+    persist();
+  } catch {
+    state.db.audit.shift();
+    if (!wasEdit) target.splice(target.indexOf(row), 1);
+    else {
+      Object.keys(row).forEach(key => delete row[key]);
+      Object.assign(row, previousRow);
+      if (previousName !== name) updateNamedReferences("contracts", row.id, name, previousName);
+    }
+    return toast("Sözleşme dosyaları bu cihazın yerel saklama sınırını aştı. Daha küçük dosyalar seçin.");
+  }
+  closeModal();
+  renderPage();
+  toast(wasEdit ? "Sözleşme güncellendi." : "Sözleşme oluşturuldu.");
+}
+
+function saveSubcontractorRecord(data) {
+  const target = state.db.records.subcontractors ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const wasEdit = Boolean(row);
+  const contact = records("contacts").find(item => item.name === data.name && item.type === "Taşeron");
+  const contract = records("contracts").find(item => item.id === data.contractId);
+  const project = records("projects").find(item => item.name === data.project);
+  if (!contact) return toast("Önce Taşeron türünde tanımlı bir cari seçmelisiniz.");
+  if (!contract || contract.party !== contact.name) return toast("Seçilen sözleşme bu taşeron cariye ait değil.");
+  if (!project || contract.project !== project.name) return toast("Taşeron projesi sözleşmedeki projeyle aynı olmalıdır.");
+  if (target.some(item => item.id !== state.editId && (item.contractId === contract.id || item.contract === contract.name))) return toast("Bu sözleşme daha önce bir taşeron kaydına bağlanmış.");
+  if (number(data.paid) > number(data.contractAmount)) return toast("Ödenen tutar sözleşme tutarını aşamaz.");
+  const previousName = row?.name;
+  const subcontractor = {
+    name: contact.name,
+    contractId: contract.id,
+    contract: contract.name,
+    specialty: data.specialty.trim(),
+    project: project.name,
+    materialProvision: data.materialProvision,
+    contractAmount: data.contractAmount,
+    paid: data.paid,
+    updatedAt: new Date().toISOString()
+  };
+  if (row) {
+    if (previousName && previousName !== contact.name) updateNamedReferences("subcontractors", row.id, previousName, contact.name);
+    Object.assign(row, subcontractor);
+  } else {
+    row = { id: uid(), ...subcontractor, createdAt: new Date().toISOString() };
+    target.push(row);
+  }
+  audit(wasEdit ? "Taşeron kaydı güncellendi" : "Taşeron kaydı oluşturuldu", contact.name + " · " + contract.name);
+  persist();
+  closeModal();
+  renderPage();
+  toast(wasEdit ? "Taşeron kaydı güncellendi." : "Taşeron sözleşmeyle ilişkilendirildi.");
+}
+
 function saveStaffRecord(data) {
   const target = state.db.records.staff ||= [];
   let row = target.find(item => item.id === state.editId);
@@ -1242,6 +1452,8 @@ async function saveRecord(event) {
   const data = Object.fromEntries(new FormData(event.target));
   if (section.specialForm === "cash") return saveCashRecord(data);
   if (section.specialForm === "warehouse") return saveWarehouseRecord(data);
+  if (section.specialForm === "contract") return saveContractRecord(data);
+  if (section.specialForm === "subcontractor") return saveSubcontractorRecord(data);
   if (section.specialForm === "staff") return saveStaffRecord(data);
   if (section.specialForm === "staffAssignment") return saveStaffAssignment(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
@@ -1546,10 +1758,12 @@ function deleteRecord(id) {
 function closeModal() {
   $("#recordModal").classList.remove("open");
   $("#recordModal").classList.remove("staff-modal");
+  $("#recordModal").classList.remove("contract-modal");
   $("#recordFields").onclick = null;
   $("#recordForm").reset();
   state.editId = null;
   state.staffDraft = null;
+  state.contractDraft = null;
 }
 
 function saveSettings(event) {
@@ -1567,7 +1781,7 @@ function exportCsv() {
   const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : records(state.page);
   const exportValue = (field, row) => {
     if (field.type === "staffPhoto") return row.photo?.name || "";
-    if (field.type === "staffDocuments") return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
+    if (["staffDocuments", "contractDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
     return row[field.name] ?? "";
   };
   const csv = [fields.map(field => field.label), ...source.map(row => fields.map(field => exportValue(field, row)))]
@@ -1661,7 +1875,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.6.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.7.0", { updateViaCache: "none" });
     registration.update();
   });
 }
