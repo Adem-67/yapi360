@@ -251,19 +251,63 @@ function totals() {
   return { income, expense, balance: income - expense, salesTotal, collected };
 }
 
-function renderDashboard() {
-  const result = totals();
+function dashboardMetrics() {
+  const cash = totals();
   const projects = records("projects");
-  const activeProjects = projects.filter(item => item.status === "Aktif");
-  const avgProgress = activeProjects.length ? Math.round(activeProjects.reduce((sum, item) => sum + number(item.progress), 0) / activeProjects.length) : 0;
-  const lowStock = records("inventory").filter(item => item.type === "Malzeme" && number(item.onHand) <= number(item.critical));
+  const contracts = records("contracts");
+  const activeContracts = contracts.filter(item => item.status === "İmzalandı");
+  const activeContractIds = new Set(activeContracts.map(item => item.id));
+  const activeContractNames = new Set(activeContracts.map(item => item.name));
+  const plannedProjectCost = projects.reduce((sum, item) => sum + number(item.budget), 0);
+  const activeContractAmount = records("subcontractors")
+    .filter(item => activeContractIds.has(item.contractId) || activeContractNames.has(item.contract))
+    .reduce((sum, item) => sum + number(item.contractAmount), 0);
+  const approvedProgress = records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status));
+  const totalProgress = approvedProgress.reduce((sum, item) => sum + number(item.amount), 0);
+  const stockValue = records("inventory").filter(item => item.type === "Malzeme").reduce((sum, item) => {
+    const purchases = records("purchases").filter(purchase => purchase.item === item.name && number(purchase.quantity) > 0);
+    const purchasedQuantity = purchases.reduce((total, purchase) => total + number(purchase.quantity), 0);
+    const purchasedAmount = purchases.reduce((total, purchase) => total + number(purchase.amount), 0);
+    const averageUnitCost = purchasedQuantity ? purchasedAmount / purchasedQuantity : number(item.unitPrice);
+    return sum + number(item.onHand) * averageUnitCost;
+  }, 0);
+  const receivableBalance = contactSummary().reduce((sum, item) => sum + Math.max(0, number(item.balance)), 0);
+  const instruments = records("checks");
+  const payableInstruments = instruments
+    .filter(item => item.type?.startsWith("Verilen") && !["Ödendi", "İade"].includes(item.status))
+    .reduce((sum, item) => sum + number(item.amount), 0);
+  const receivableInstruments = instruments
+    .filter(item => item.type?.startsWith("Alınan") && !["Tahsil Edildi", "Ciro Edildi", "Ödendi", "İade"].includes(item.status))
+    .reduce((sum, item) => sum + number(item.amount), 0);
+  return {
+    plannedProjectCost,
+    activeContractAmount,
+    totalProgress,
+    stockValue,
+    cashBalance: cash.balance,
+    receivableBalance,
+    payableInstruments,
+    receivableInstruments,
+    activeProjectCount: projects.filter(item => item.status === "Aktif").length,
+    activeContractCount: activeContracts.length,
+    approvedProgressCount: approvedProgress.length
+  };
+}
+
+function renderDashboard() {
+  const metrics = dashboardMetrics();
+  const projects = records("projects");
   const recent = state.db.audit.slice(0, 5);
   return `
     <div class="grid">
-      <article class="stat"><small>KASA BAKİYESİ</small><strong>${money.format(result.balance)}</strong><em>${result.balance >= 0 ? "Pozitif nakit" : "Nakit açığı"}</em></article>
-      <article class="stat"><small>TOPLAM SATIŞ</small><strong>${money.format(result.salesTotal)}</strong><em>${money.format(result.collected)} tahsil edildi</em></article>
-      <article class="stat"><small>AKTİF PROJE</small><strong>${activeProjects.length}</strong><em>Ortalama %${avgProgress} ilerleme</em></article>
-      <article class="stat"><small>KRİTİK STOK</small><strong>${lowStock.length}</strong><em>${lowStock.length ? "Kontrol gerekiyor" : "Stoklar yeterli"}</em></article>
+      <article class="stat"><small>PLANLANAN PROJE MALİYETİ</small><strong>${money.format(metrics.plannedProjectCost)}</strong><em>${metrics.activeProjectCount} aktif proje</em></article>
+      <article class="stat"><small>AKTİF SÖZLEŞME TUTARI</small><strong>${money.format(metrics.activeContractAmount)}</strong><em>${metrics.activeContractCount} imzalı sözleşme</em></article>
+      <article class="stat"><small>TOPLAM HAKEDİŞ</small><strong>${money.format(metrics.totalProgress)}</strong><em>${metrics.approvedProgressCount} onaylı hakediş</em></article>
+      <article class="stat"><small>MEVCUT STOK DEĞERİ</small><strong>${money.format(metrics.stockValue)}</strong><em>Ortalama alış maliyetiyle</em></article>
+      <article class="stat"><small>KASA BAKİYESİ</small><strong class="${metrics.cashBalance >= 0 ? "metric-positive" : "metric-negative"}">${money.format(metrics.cashBalance)}</strong><em>${metrics.cashBalance >= 0 ? "Pozitif nakit" : "Nakit açığı"}</em></article>
+      <article class="stat"><small>ALACAK BAKİYESİ</small><strong>${money.format(metrics.receivableBalance)}</strong><em>Müşteri ve cari alacakları</em></article>
+      <article class="stat"><small>ÖDENECEK ÇEK / SENET</small><strong class="${metrics.payableInstruments ? "metric-negative" : ""}">${money.format(metrics.payableInstruments)}</strong><em>Açık verilen belgeler</em></article>
+      <article class="stat"><small>TAHSİL EDİLECEK ÇEK / SENET</small><strong>${money.format(metrics.receivableInstruments)}</strong><em>Açık alınan belgeler</em></article>
     </div>
     <div class="panels">
       <section class="panel">
@@ -619,7 +663,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.8.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.9.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -938,6 +982,16 @@ function bindProgressForm() {
   renderProgressDraftFiles();
 }
 
+function nextProgressNumber(date = new Date()) {
+  const year = date.getFullYear();
+  const pattern = new RegExp(`^HKD-${year}-(\\d+)$`);
+  const lastSequence = records("progress").reduce((maximum, item) => {
+    const match = String(item.number || "").match(pattern);
+    return match ? Math.max(maximum, number(match[1])) : maximum;
+  }, 0);
+  return `HKD-${year}-${String(lastSequence + 1).padStart(4, "0")}`;
+}
+
 function openProgressModal(id = null) {
   const row = records("progress").find(item => item.id === id) || {};
   const subcontractors = records("contacts").filter(item => item.type === "Taşeron");
@@ -947,7 +1001,7 @@ function openProgressModal(id = null) {
   $("#recordModal").classList.add("contract-modal");
   $("#modalTitle").textContent = "Hakediş" + (id ? " — Düzenle" : " — Yeni Kayıt");
   $("#recordFields").innerHTML = `
-    <div class="field"><label for="field-number">Hakediş no</label><input class="input" id="field-number" name="number" value="${escapeHtml(row.number || "")}" required></div>
+    <div class="field"><label for="field-number">Hakediş no</label><input class="input" id="field-number" name="number" value="${escapeHtml(row.number || nextProgressNumber())}" readonly required><small class="field-note">Sistem tarafından otomatik verilir.</small></div>
     <div class="field"><label for="field-subcontractor">Taşeron / cari</label><select class="select" id="field-subcontractor" name="subcontractor" required>${namedRelationOptions(subcontractors, row.subcontractor || "", "Önce Taşeron türünde cari tanımlayın")}</select></div>
     <div class="field"><label for="field-project">Proje</label><select class="select" id="field-project" name="project" required>${namedRelationOptions(projects, row.project || "", "Önce proje tanımlayın")}</select></div>
     <div class="field"><label for="field-amount">Tutar</label><input class="input" id="field-amount" name="amount" type="number" min="0.01" step="0.01" value="${escapeHtml(row.amount || "")}" required></div>
@@ -1419,7 +1473,7 @@ function saveProgressRecord(data) {
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
   const previousRow = row ? { ...row, documents: [...(row.documents || [])] } : null;
-  const progressNumber = data.number.trim();
+  const progressNumber = row?.number || nextProgressNumber();
   const contact = records("contacts").find(item => item.name === data.subcontractor && item.type === "Taşeron");
   const project = records("projects").find(item => item.name === data.project);
   if (!contact) return toast("Hakediş için Taşeron türünde tanımlı bir cari seçmelisiniz.");
@@ -1988,7 +2042,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.8.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.9.0", { updateViaCache: "none" });
     registration.update();
   });
 }
