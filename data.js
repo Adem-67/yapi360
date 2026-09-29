@@ -54,7 +54,7 @@ window.YAPI360_SECTIONS = {
   },
   contacts: {
     title: "Cariler", icon: "▥", description: "Müşteri, tedarikçi ve taşeron cari kartları.",
-    fields: [f("name", "Cari adı"), f("type", "Tür", "select", { options: ["Müşteri", "Tedarikçi", "Taşeron", "Arsa Sahibi"] }), f("phone", "Telefon", "tel"), f("taxId", "Vergi / TC no"), f("openingBalance", "Açılış bakiyesi", "number")]
+    fields: [f("name", "Cari adı"), f("type", "Tür", "select", { options: ["Müşteri", "Tedarikçi", "Taşeron", "Arsa Sahibi"] }), f("phone", "Telefon", "tel"), f("taxId", "Vergi / TC no"), f("balance", "Bakiye", "number", { form: false })]
   },
   staff: {
     title: "Personeller", icon: "♟", description: "Personel özlük, iletişim, adres ve işe giriş/çıkış evrakları.", specialForm: "staff",
