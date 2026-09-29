@@ -17,12 +17,12 @@ const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/pn
 const MAX_STAFF_DOCUMENT_BYTES = 1500000;
 const MAX_STAFF_DOCUMENT_TOTAL_BYTES = 2500000;
 const REFERENCE_FIELDS = {
-  contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"] },
-  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"] },
-  sites: { assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"] },
-  staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"] },
+  contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"], supplier_quotes: ["supplier"], purchase_orders: ["supplier"] },
+  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"], purchase_requests: ["project"], supplier_quotes: ["project"], purchase_orders: ["project"], administrative_tasks: ["project"] },
+  sites: { assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"], purchase_requests: ["site"], supplier_quotes: ["site"], purchase_orders: ["site"], administrative_tasks: ["site"] },
+  staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"], purchase_requests: ["requestedBy"], administrative_tasks: ["responsible"] },
   contracts: { subcontractors: ["contract"] },
-  inventory: { purchases: ["item"], warehouse: ["itemName"] },
+  inventory: { purchases: ["item"], warehouse: ["itemName"], purchase_requests: ["itemName"], supplier_quotes: ["itemName"], purchase_orders: ["itemName"] },
   subcontractors: { warehouse: ["subcontractor"] },
   bank_accounts: { cash: ["accountName"] }
 };
@@ -211,6 +211,7 @@ function renderPage() {
   const section = window.YAPI360_SECTIONS[state.page];
   const special = section.special;
   if (special === "dashboard") $("#content").innerHTML = renderDashboard();
+  else if (special === "procurementDashboard") $("#content").innerHTML = renderProcurementDashboard();
   else if (special === "contactLedger") $("#content").innerHTML = renderContactLedger();
   else if (special === "staffLedger") $("#content").innerHTML = renderStaffLedger();
   else if (special === "staffAssignmentReport") $("#content").innerHTML = renderStaffAssignmentReport();
@@ -350,6 +351,36 @@ function renderDashboard() {
   `;
 }
 
+function renderProcurementDashboard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const requests = records("purchase_requests");
+  const quotes = records("supplier_quotes");
+  const orders = records("purchase_orders");
+  const adminTasks = records("administrative_tasks");
+  const openRequests = requests.filter(item => !["Siparişe Dönüştü", "Tamamlandı", "İptal"].includes(item.status));
+  const pendingQuotes = quotes.filter(item => ["Beklemede", "Değerlendiriliyor"].includes(item.status));
+  const openOrders = orders.filter(item => !["Teslim Alındı", "İptal"].includes(item.status));
+  const overdueTasks = adminTasks.filter(item => item.dueDate && item.dueDate < today && !["Tamamlandı", "İptal"].includes(item.status));
+  const recentOrders = [...orders].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
+  return `
+    <div class="grid procurement-metrics">
+      <article class="stat"><small>AÇIK SATINALMA TALEBİ</small><strong>${openRequests.length}</strong><em>Teklif ve onay bekleyen</em></article>
+      <article class="stat"><small>DEĞERLENDİRİLEN TEKLİF</small><strong>${pendingQuotes.length}</strong><em>Tedarikçi karşılaştırması</em></article>
+      <article class="stat"><small>AÇIK SİPARİŞ</small><strong>${openOrders.length}</strong><em>${money.format(openOrders.reduce((sum, item) => sum + number(item.amount), 0))}</em></article>
+      <article class="stat"><small>GECİKEN İDARİ İŞ</small><strong class="${overdueTasks.length ? "metric-negative" : ""}">${overdueTasks.length}</strong><em>Son tarihi geçen görev</em></article>
+    </div>
+    <div class="procurement-flow">
+      <button class="procurement-step" data-go="purchase_requests"><span>1</span><strong>Talep Oluştur</strong><small>Proje · şantiye · personel · stok</small></button>
+      <button class="procurement-step" data-go="supplier_quotes"><span>2</span><strong>Teklif Topla</strong><small>Talebe bağlı tedarikçi fiyatları</small></button>
+      <button class="procurement-step" data-go="purchase_orders"><span>3</span><strong>Sipariş Ver</strong><small>Onaylı teklif ve teslim takibi</small></button>
+      <button class="procurement-step" data-go="purchases"><span>4</span><strong>Alış & Depo</strong><small>Teslimde otomatik alış ve stok girişi</small></button>
+    </div>
+    <div class="panels">
+      <section class="panel"><div class="panel-head"><h3>Son Siparişler</h3><button class="btn ghost small" data-go="purchase_orders">Tümü</button></div>${recentOrders.length ? recentOrders.map(item => `<div class="row"><div class="row-main"><strong>${escapeHtml(item.number)} · ${escapeHtml(item.supplier)}</strong><small>${escapeHtml(item.itemName)} · ${formatDate(item.expectedDelivery)}</small></div><span class="badge ${item.status === "Teslim Alındı" ? "" : "warning"}">${escapeHtml(item.status)}</span></div>`).join("") : emptyMessage("Henüz satınalma siparişi yok.")}</section>
+      <section class="panel"><div class="panel-head"><h3>İdari İşler</h3><button class="btn ghost small" data-go="administrative_tasks">Görevleri Aç</button></div>${adminTasks.length ? [...adminTasks].sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))).slice(0, 5).map(item => `<div class="row"><div class="row-main"><strong>${escapeHtml(item.category)} · ${escapeHtml(item.responsible)}</strong><small>${escapeHtml(item.description)} · ${formatDate(item.dueDate)}</small></div><span class="badge ${item.dueDate < today && !["Tamamlandı", "İptal"].includes(item.status) ? "danger" : ""}">${escapeHtml(item.status)}</span></div>`).join("") : emptyMessage("Henüz idari görev yok.")}</section>
+    </div>`;
+}
+
 function tableFields(section) {
   return (section.fields || []).filter(field => field.table !== false);
 }
@@ -361,16 +392,21 @@ function formFields(section) {
 function renderList(section, sourceRows) {
   const rows = state.page === "cash" ? derivedCash() : sourceRows;
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
+  const addLabels = { warehouse: "+ Yeni Sevkiyat", purchase_requests: "+ Yeni Talep", supplier_quotes: "+ Yeni Teklif", purchase_orders: "+ Yeni Sipariş", administrative_tasks: "+ Yeni İdari İş" };
   return `
     ${state.page === "cash" ? '<div class="callout">Ödeme, tahsilat, maaş ve avans hareketlerinde Nakit Kasa veya aktif banka hesabı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak kasa/banka bakiyesini değiştirmez.</div>' : ""}
     ${state.page === "progress" ? '<div class="callout">Onaylanan hakediş taşeron carinin alacağına ve firma borcuna yansır. Hakediş ödemesini Kasa & Finans Hareketleri üzerinden aynı cariye “Ödeme” olarak kaydedin.</div>' : ""}
     ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
+    ${state.page === "purchase_requests" ? '<div class="callout">Talep; proje, projeye bağlı şantiye, talep eden personel ve tanımlı stok/hizmet kartıyla oluşturulur.</div>' : ""}
+    ${state.page === "supplier_quotes" ? '<div class="callout">Teklifler açık satınalma talebine ve Tedarikçi türündeki cari karta bağlanır. Onaylanan teklif siparişe dönüştürülebilir.</div>' : ""}
+    ${state.page === "purchase_orders" ? '<div class="callout">Sipariş “Teslim Alındı” olduğunda Alış İşlemleri kaydı ve malzeme için ana depo girişi otomatik oluşur.</div>' : ""}
+    ${state.page === "administrative_tasks" ? '<div class="callout">İdari görevler proje, projeye bağlı şantiye ve sorumlu personelle ilişkilendirilir; geciken işler çalışma alanında görünür.</div>' : ""}
     ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
     ${state.page === "contacts" ? `<div class="contact-print-heading"><strong>Yapı360 · Cari Listesi</strong><span>${escapeHtml(state.db.company?.name || "")} · ${escapeHtml(new Date().toLocaleDateString("tr-TR"))}</span></div>` : ""}
     <div class="toolbar">
       <input class="input search" id="search" placeholder="${section.title} içinde ara…">
-      ${addAllowed ? `<button class="btn gold" id="addRecord">${state.page === "warehouse" ? "+ Yeni Sevkiyat" : "+ Yeni Kayıt"}</button>` : ""}
+      ${addAllowed ? `<button class="btn gold" id="addRecord">${addLabels[state.page] || "+ Yeni Kayıt"}</button>` : ""}
       <button class="btn ghost" id="exportCsv">${state.page === "contacts" ? "Cari Listesini Dışa Aktar" : "CSV Dışa Aktar"}</button>
       ${state.page === "contacts" ? '<button class="btn ghost" id="printContactList">Yazdır / PDF Kaydet</button>' : ""}
     </div>
@@ -924,7 +960,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.13.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.14.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -1577,6 +1613,128 @@ function openStaffAssignmentModal(id = null) {
   $("#recordModal").classList.add("open");
 }
 
+function nextWorkflowNumber(page, prefix, date = new Date()) {
+  const year = date.getFullYear();
+  const pattern = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+  const lastSequence = records(page).reduce((maximum, item) => {
+    const match = String(item.number || "").match(pattern);
+    return match ? Math.max(maximum, number(match[1])) : maximum;
+  }, 0);
+  return `${prefix}-${year}-${String(lastSequence + 1).padStart(4, "0")}`;
+}
+
+function optionalSiteOptions(projectId, selected = "") {
+  return optionList(warehouseSites(projectId), selected, item => item.name, projectId ? "Şantiye seçimi yok" : "Önce proje seçin", true);
+}
+
+function openPurchaseRequestModal(id = null) {
+  const row = records("purchase_requests").find(item => item.id === id) || {};
+  const projects = records("projects");
+  const staff = records("staff").filter(item => item.status !== "Ayrıldı");
+  const inventory = records("inventory");
+  const projectId = row.projectId || projects.find(item => item.name === row.project)?.id || "";
+  state.editId = id;
+  $("#modalTitle").textContent = "Satınalma Talebi" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label>Talep no</label><input class="input" value="${escapeHtml(row.number || nextWorkflowNumber("purchase_requests", "SAT"))}" readonly><small class="field-note">Sistem tarafından otomatik verilir.</small></div>
+    <div class="field"><label for="field-date">Talep tarihi</label><input class="input" id="field-date" name="date" type="date" value="${escapeHtml(row.date || new Date().toISOString().slice(0, 10))}" required></div>
+    <div class="field"><label for="field-projectId">Proje</label><select class="select" id="field-projectId" name="projectId" required>${optionList(projects, projectId, item => item.name, "Önce proje tanımlayın")}</select></div>
+    <div class="field"><label for="field-siteId">Şantiye</label><select class="select" id="field-siteId" name="siteId" required>${warehouseSiteOptions(projectId, row.siteId)}</select></div>
+    <div class="field"><label for="field-staffId">Talep eden personel</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, row.staffId, item => item.name + " · " + item.role, "Önce personel tanımlayın")}</select></div>
+    <div class="field"><label for="field-itemId">Stok / hizmet</label><select class="select" id="field-itemId" name="itemId" required>${optionList(inventory, row.itemId, item => item.name + " · " + item.type + " · " + (item.unit || "birim yok"), "Önce stok veya hizmet tanımlayın")}</select></div>
+    <div class="field"><label for="field-quantity">Miktar</label><input class="input" id="field-quantity" name="quantity" type="number" min="0.01" step="0.01" value="${escapeHtml(row.quantity || "")}" required></div>
+    <div class="field"><label for="field-neededDate">İhtiyaç tarihi</label><input class="input" id="field-neededDate" name="neededDate" type="date" value="${escapeHtml(row.neededDate || "")}" required></div>
+    <div class="field"><label for="field-priority">Öncelik</label><select class="select" id="field-priority" name="priority" required>${["Normal", "Yüksek", "Acil"].map(value => `<option ${value === (row.priority || "Normal") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Taslak", "Onay Bekliyor", "Onaylandı", "İptal"].map(value => `<option ${value === (row.status || "Taslak") ? "selected" : ""}>${value}</option>`).join("")}${["Teklif Toplanıyor", "Siparişe Dönüştü", "Tamamlandı"].includes(row.status) ? `<option selected>${escapeHtml(row.status)}</option>` : ""}</select></div>
+    <div class="field full-field"><label for="field-description">Açıklama / teknik özellik</label><textarea class="input" id="field-description" name="description" rows="3" required>${escapeHtml(row.description || "")}</textarea></div>`;
+  $("#field-projectId").addEventListener("change", event => { $("#field-siteId").innerHTML = warehouseSiteOptions(event.target.value); });
+  $("#recordModal").classList.add("open");
+}
+
+function quoteRequestOptions(selectedId = "") {
+  const requests = records("purchase_requests").filter(item => !["Taslak", "İptal", "Tamamlandı"].includes(item.status) || item.id === selectedId);
+  return optionList(requests, selectedId, item => item.number + " · " + item.itemName + " · " + item.project, "Önce onaylı satınalma talebi oluşturun");
+}
+
+function updateQuoteRequestSummary() {
+  const request = records("purchase_requests").find(item => item.id === $("#field-requestId")?.value);
+  if ($("#procurementRequestSummary")) $("#procurementRequestSummary").innerHTML = request
+    ? `<strong>${escapeHtml(request.number)} · ${escapeHtml(request.itemName)}</strong><small>${escapeHtml(request.project)} / ${escapeHtml(request.site)} · ${number(request.quantity).toLocaleString("tr-TR")} ${escapeHtml(request.unit || "")}</small>`
+    : "Talep seçildiğinde proje, şantiye, malzeme ve miktar otomatik bağlanır.";
+}
+
+function openSupplierQuoteModal(id = null) {
+  const row = records("supplier_quotes").find(item => item.id === id) || {};
+  const suppliers = records("contacts").filter(item => item.type === "Tedarikçi");
+  state.editId = id;
+  $("#modalTitle").textContent = "Tedarikçi Teklifi" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label>Teklif no</label><input class="input" value="${escapeHtml(row.number || nextWorkflowNumber("supplier_quotes", "TEK"))}" readonly><small class="field-note">Sistem tarafından otomatik verilir.</small></div>
+    <div class="field"><label for="field-date">Teklif tarihi</label><input class="input" id="field-date" name="date" type="date" value="${escapeHtml(row.date || new Date().toISOString().slice(0, 10))}" required></div>
+    <div class="field full-field"><label for="field-requestId">Satınalma talebi</label><select class="select" id="field-requestId" name="requestId" required>${quoteRequestOptions(row.requestId)}</select><div class="relation-summary" id="procurementRequestSummary"></div></div>
+    <div class="field"><label for="field-supplierId">Tedarikçi / cari</label><select class="select" id="field-supplierId" name="supplierId" required>${optionList(suppliers, row.supplierId, item => item.name, "Önce Tedarikçi türünde cari tanımlayın")}</select></div>
+    <div class="field"><label for="field-amount">Toplam teklif tutarı</label><input class="input" id="field-amount" name="amount" type="number" min="0.01" step="0.01" value="${escapeHtml(row.amount || "")}" required></div>
+    <div class="field"><label for="field-deliveryDate">Teklif edilen teslim</label><input class="input" id="field-deliveryDate" name="deliveryDate" type="date" value="${escapeHtml(row.deliveryDate || "")}" required></div>
+    <div class="field"><label for="field-validUntil">Teklif geçerlilik tarihi</label><input class="input" id="field-validUntil" name="validUntil" type="date" value="${escapeHtml(row.validUntil || "")}" required></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Beklemede", "Değerlendiriliyor", "Onaylandı", "Reddedildi"].map(value => `<option ${value === (row.status || "Beklemede") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field full-field"><label for="field-note">Teklif notu</label><textarea class="input" id="field-note" name="note" rows="3">${escapeHtml(row.note || "")}</textarea></div>`;
+  $("#field-requestId").addEventListener("change", updateQuoteRequestSummary);
+  updateQuoteRequestSummary();
+  $("#recordModal").classList.add("open");
+}
+
+function orderQuoteOptions(selectedId = "") {
+  const usedQuoteIds = new Set(records("purchase_orders").filter(item => item.id !== state.editId).map(item => item.quoteId));
+  const quotes = records("supplier_quotes").filter(item => (item.status === "Onaylandı" && !usedQuoteIds.has(item.id)) || item.id === selectedId);
+  return optionList(quotes, selectedId, item => item.number + " · " + item.supplier + " · " + money.format(number(item.amount)), "Önce onaylı ve siparişe dönüşmemiş teklif oluşturun");
+}
+
+function updateOrderQuoteSummary() {
+  const quote = records("supplier_quotes").find(item => item.id === $("#field-quoteId")?.value);
+  if ($("#procurementQuoteSummary")) $("#procurementQuoteSummary").innerHTML = quote
+    ? `<strong>${escapeHtml(quote.number)} · ${escapeHtml(quote.supplier)}</strong><small>${escapeHtml(quote.itemName)} · ${number(quote.quantity).toLocaleString("tr-TR")} ${escapeHtml(quote.unit || "")} · ${escapeHtml(money.format(number(quote.amount)))}</small>`
+    : "Onaylı teklif seçildiğinde talep, tedarikçi, proje ve malzeme otomatik bağlanır.";
+  if (quote && $("#field-expectedDelivery") && !$("#field-expectedDelivery").value) $("#field-expectedDelivery").value = quote.deliveryDate || "";
+}
+
+function openPurchaseOrderModal(id = null) {
+  const row = records("purchase_orders").find(item => item.id === id) || {};
+  state.editId = id;
+  $("#modalTitle").textContent = "Satınalma Siparişi" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label>Sipariş no</label><input class="input" value="${escapeHtml(row.number || nextWorkflowNumber("purchase_orders", "SIP"))}" readonly><small class="field-note">Sistem tarafından otomatik verilir.</small></div>
+    <div class="field"><label for="field-date">Sipariş tarihi</label><input class="input" id="field-date" name="date" type="date" value="${escapeHtml(row.date || new Date().toISOString().slice(0, 10))}" required></div>
+    <div class="field full-field"><label for="field-quoteId">Onaylı tedarikçi teklifi</label><select class="select" id="field-quoteId" name="quoteId" required>${orderQuoteOptions(row.quoteId)}</select><div class="relation-summary" id="procurementQuoteSummary"></div></div>
+    <div class="field"><label for="field-expectedDelivery">Planlanan teslim tarihi</label><input class="input" id="field-expectedDelivery" name="expectedDelivery" type="date" value="${escapeHtml(row.expectedDelivery || "")}" required></div>
+    <div class="field"><label for="field-receivedDate">Teslim alma tarihi</label><input class="input" id="field-receivedDate" name="receivedDate" type="date" value="${escapeHtml(row.receivedDate || "")}"><small class="field-note">Durum “Teslim Alındı” ise zorunludur.</small></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Taslak", "Onaylandı", "Sipariş Verildi", "Teslim Alındı", "İptal"].map(value => `<option ${value === (row.status || "Taslak") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field full-field"><label for="field-note">Sipariş notu</label><textarea class="input" id="field-note" name="note" rows="3">${escapeHtml(row.note || "")}</textarea></div>`;
+  $("#field-quoteId").addEventListener("change", updateOrderQuoteSummary);
+  updateOrderQuoteSummary();
+  $("#recordModal").classList.add("open");
+}
+
+function openAdministrativeTaskModal(id = null) {
+  const row = records("administrative_tasks").find(item => item.id === id) || {};
+  const projects = records("projects");
+  const staff = records("staff").filter(item => item.status !== "Ayrıldı");
+  const projectId = row.projectId || projects.find(item => item.name === row.project)?.id || "";
+  state.editId = id;
+  $("#modalTitle").textContent = "İdari İş" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label>İş no</label><input class="input" value="${escapeHtml(row.number || nextWorkflowNumber("administrative_tasks", "IDR"))}" readonly></div>
+    <div class="field"><label for="field-category">Kategori</label><select class="select" id="field-category" name="category" required>${["Ruhsat / İzin", "Sigorta", "Abonelik", "Resmi Yazışma", "Ofis", "Araç", "Bakım", "Diğer"].map(value => `<option ${value === (row.category || "Ruhsat / İzin") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field"><label for="field-projectId">Proje</label><select class="select" id="field-projectId" name="projectId">${optionList(projects, projectId, item => item.name, "Genel / proje bağlantısı yok", true)}</select></div>
+    <div class="field"><label for="field-siteId">Şantiye</label><select class="select" id="field-siteId" name="siteId">${optionalSiteOptions(projectId, row.siteId)}</select></div>
+    <div class="field"><label for="field-staffId">Sorumlu personel</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, row.staffId, item => item.name + " · " + item.role, "Önce personel tanımlayın")}</select></div>
+    <div class="field"><label for="field-dueDate">Son tarih</label><input class="input" id="field-dueDate" name="dueDate" type="date" value="${escapeHtml(row.dueDate || "")}" required></div>
+    <div class="field"><label for="field-priority">Öncelik</label><select class="select" id="field-priority" name="priority" required>${["Normal", "Yüksek", "Acil"].map(value => `<option ${value === (row.priority || "Normal") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Açık", "Devam Ediyor", "Beklemede", "Tamamlandı", "İptal"].map(value => `<option ${value === (row.status || "Açık") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="field full-field"><label for="field-description">Açıklama</label><textarea class="input" id="field-description" name="description" rows="3" required>${escapeHtml(row.description || "")}</textarea></div>`;
+  $("#field-projectId").addEventListener("change", event => { $("#field-siteId").innerHTML = optionalSiteOptions(event.target.value); });
+  $("#recordModal").classList.add("open");
+}
+
 function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
   if (section.specialForm === "cash") return openCashModal(id);
@@ -1586,6 +1744,10 @@ function openModal(id = null) {
   if (section.specialForm === "subcontractor") return openSubcontractorModal(id);
   if (section.specialForm === "staff") return openStaffModal(id);
   if (section.specialForm === "staffAssignment") return openStaffAssignmentModal(id);
+  if (section.specialForm === "purchaseRequest") return openPurchaseRequestModal(id);
+  if (section.specialForm === "supplierQuote") return openSupplierQuoteModal(id);
+  if (section.specialForm === "purchaseOrder") return openPurchaseOrderModal(id);
+  if (section.specialForm === "administrativeTask") return openAdministrativeTaskModal(id);
   const source = state.page === "users" ? state.db.users : records(state.page);
   const row = source.find(item => item.id === id) || {};
   state.editId = id;
@@ -1646,6 +1808,9 @@ function referenceCount(page, row) {
   if (["purchases", "sales", "progress"].includes(page)) count += records("cash").filter(item => item.sourceRecordId === row.id).length;
   if (page === "checks") count += records("cash").filter(item => item.instrumentId === row.id || item.createdInstrumentId === row.id).length;
   if (page === "staff_assignments") count += records("timesheets").filter(item => item.assignmentId === row.id).length;
+  if (page === "purchase_requests") count += records("supplier_quotes").filter(item => item.requestId === row.id).length + records("purchase_orders").filter(item => item.requestId === row.id).length;
+  if (page === "supplier_quotes") count += records("purchase_orders").filter(item => item.quoteId === row.id).length;
+  if (page === "purchase_orders") count += records("purchases").filter(item => item.purchaseOrderId === row.id).length;
   return count;
 }
 
@@ -1939,6 +2104,145 @@ function saveStaffRecord(data) {
   toast(wasEdit ? "Personel kartı güncellendi." : "Personel kartı oluşturuldu.");
 }
 
+function savePurchaseRequest(data) {
+  const target = state.db.records.purchase_requests ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const project = records("projects").find(item => item.id === data.projectId);
+  const site = records("sites").find(item => item.id === data.siteId);
+  const staff = records("staff").find(item => item.id === data.staffId && item.status !== "Ayrıldı");
+  const item = records("inventory").find(entry => entry.id === data.itemId);
+  if (!project || !site || site.project !== project.name) return toast("Talep için proje ve bu projeye bağlı şantiye seçmelisiniz.");
+  if (!staff || !item) return toast("Talep eden aktif personel ile tanımlı stok/hizmet seçmelisiniz.");
+  if (number(data.quantity) <= 0) return toast("Talep miktarı sıfırdan büyük olmalıdır.");
+  if (data.neededDate < data.date) return toast("İhtiyaç tarihi talep tarihinden önce olamaz.");
+  const linkedQuotes = row ? records("supplier_quotes").filter(quote => quote.requestId === row.id) : [];
+  if (row && linkedQuotes.length && (row.projectId !== project.id || row.siteId !== site.id || row.itemId !== item.id || number(row.quantity) !== number(data.quantity))) {
+    return toast("Teklif bağlanan talebin proje, şantiye, stok veya miktar bilgisi değiştirilemez.");
+  }
+  if (linkedQuotes.length && data.status === "İptal") return toast("Teklif bağlanan satınalma talebi iptal edilemez.");
+  const wasEdit = Boolean(row);
+  const request = {
+    number: row?.number || nextWorkflowNumber("purchase_requests", "SAT"), date: data.date,
+    projectId: project.id, project: project.name, siteId: site.id, site: site.name,
+    staffId: staff.id, requestedBy: staff.name, itemId: item.id, itemName: item.name, unit: item.unit || "",
+    quantity: data.quantity, neededDate: data.neededDate, priority: data.priority,
+    status: linkedQuotes.length && ["Taslak", "Onay Bekliyor", "Onaylandı"].includes(data.status) ? row.status : data.status,
+    description: data.description.trim(), updatedAt: new Date().toISOString()
+  };
+  if (row) Object.assign(row, request);
+  else { row = { id: uid(), ...request, createdAt: new Date().toISOString() }; target.push(row); }
+  audit(wasEdit ? "Satınalma talebi güncellendi" : "Satınalma talebi oluşturuldu", row.number + " · " + item.name);
+  persist(); closeModal(); renderPage(); toast(wasEdit ? "Satınalma talebi güncellendi." : "Satınalma talebi oluşturuldu.");
+}
+
+function saveSupplierQuote(data) {
+  const target = state.db.records.supplier_quotes ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const request = records("purchase_requests").find(item => item.id === data.requestId && item.status !== "İptal");
+  const supplier = records("contacts").find(item => item.id === data.supplierId && item.type === "Tedarikçi");
+  if (!request || !supplier) return toast("Geçerli satınalma talebi ve Tedarikçi türünde cari seçmelisiniz.");
+  if (number(data.amount) <= 0) return toast("Teklif tutarı sıfırdan büyük olmalıdır.");
+  if (data.deliveryDate < data.date || data.validUntil < data.date) return toast("Teslim ve geçerlilik tarihleri teklif tarihinden önce olamaz.");
+  if (target.some(item => item.id !== state.editId && item.requestId === request.id && item.supplierId === supplier.id)) return toast("Bu tedarikçi aynı talep için daha önce teklif vermiş.");
+  if (data.status === "Onaylandı" && target.some(item => item.id !== state.editId && item.requestId === request.id && item.status === "Onaylandı")) return toast("Bu talep için başka bir teklif zaten onaylanmış.");
+  const linkedOrder = row && records("purchase_orders").find(order => order.quoteId === row.id);
+  if (linkedOrder && (row.requestId !== request.id || row.supplierId !== supplier.id || number(row.amount) !== number(data.amount) || data.status !== "Onaylandı")) return toast("Siparişe dönüşen teklifin talep, tedarikçi, tutar ve onay durumu değiştirilemez.");
+  const wasEdit = Boolean(row);
+  const quote = {
+    number: row?.number || nextWorkflowNumber("supplier_quotes", "TEK"), date: data.date,
+    requestId: request.id, requestNumber: request.number, supplierId: supplier.id, supplier: supplier.name,
+    projectId: request.projectId, project: request.project, siteId: request.siteId, site: request.site,
+    itemId: request.itemId, itemName: request.itemName, unit: request.unit, quantity: request.quantity,
+    amount: data.amount, deliveryDate: data.deliveryDate, validUntil: data.validUntil, status: data.status,
+    note: data.note?.trim() || "", updatedAt: new Date().toISOString()
+  };
+  if (row) Object.assign(row, quote);
+  else { row = { id: uid(), ...quote, createdAt: new Date().toISOString() }; target.push(row); }
+  request.status = data.status === "Onaylandı" ? "Onaylandı" : "Teklif Toplanıyor";
+  request.updatedAt = new Date().toISOString();
+  audit(wasEdit ? "Tedarikçi teklifi güncellendi" : "Tedarikçi teklifi eklendi", row.number + " · " + supplier.name);
+  persist(); closeModal(); renderPage(); toast(wasEdit ? "Tedarikçi teklifi güncellendi." : "Tedarikçi teklifi kaydedildi.");
+}
+
+function purchaseOrderReceiptData(order, purchase = {}) {
+  return {
+    ...purchase, date: order.receivedDate, supplier: order.supplier, project: order.project, item: order.itemName,
+    quantity: order.quantity, amount: order.amount, paidAmount: number(purchase.paidAmount), paymentStatus: purchase.paymentStatus || "Ödenmedi",
+    purchaseOrderId: order.id, automatic: true, updatedAt: new Date().toISOString()
+  };
+}
+
+function syncPurchaseOrderReceipt(order) {
+  const purchases = state.db.records.purchases ||= [];
+  let purchase = purchases.find(item => item.id === order.purchaseId || item.purchaseOrderId === order.id);
+  const previous = purchase ? { ...purchase } : null;
+  const next = purchaseOrderReceiptData(order, purchase);
+  if (purchase) Object.assign(purchase, next);
+  else { purchase = { id: uid(), ...next, createdAt: new Date().toISOString() }; purchases.push(purchase); }
+  syncPurchaseInventory(purchase, previous);
+  order.purchaseId = purchase.id;
+  order.updatedAt = new Date().toISOString();
+  return purchase;
+}
+
+function savePurchaseOrder(data) {
+  const target = state.db.records.purchase_orders ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const quote = records("supplier_quotes").find(item => item.id === data.quoteId && item.status === "Onaylandı");
+  const request = quote && records("purchase_requests").find(item => item.id === quote.requestId);
+  if (!quote || !request) return toast("Sipariş için onaylı ve geçerli bir tedarikçi teklifi seçmelisiniz.");
+  if (target.some(item => item.id !== state.editId && item.quoteId === quote.id)) return toast("Bu teklif daha önce siparişe dönüştürülmüş.");
+  if (data.expectedDelivery < data.date) return toast("Planlanan teslim tarihi sipariş tarihinden önce olamaz.");
+  if (data.status === "Teslim Alındı" && !data.receivedDate) return toast("Teslim alınan sipariş için teslim alma tarihi zorunludur.");
+  if (data.receivedDate && data.receivedDate < data.date) return toast("Teslim alma tarihi sipariş tarihinden önce olamaz.");
+  if (row?.purchaseId && data.status !== "Teslim Alındı") return toast("Alış ve depo girişi oluşan sipariş teslim durumundan geri alınamaz.");
+  if (row?.purchaseId && row.quoteId !== quote.id) return toast("Teslim alınan siparişin teklifi değiştirilemez.");
+  const pendingOrder = {
+    id: row?.id || uid(), number: row?.number || nextWorkflowNumber("purchase_orders", "SIP"), date: data.date,
+    quoteId: quote.id, quoteNumber: quote.number, requestId: request.id, requestNumber: request.number,
+    supplierId: quote.supplierId, supplier: quote.supplier, projectId: quote.projectId, project: quote.project,
+    siteId: quote.siteId, site: quote.site, itemId: quote.itemId, itemName: quote.itemName, unit: quote.unit,
+    quantity: quote.quantity, amount: quote.amount, expectedDelivery: data.expectedDelivery,
+    receivedDate: data.status === "Teslim Alındı" ? data.receivedDate : "", status: data.status,
+    note: data.note?.trim() || "", purchaseId: row?.purchaseId || "", updatedAt: new Date().toISOString()
+  };
+  const linkedPurchase = row?.purchaseId ? records("purchases").find(item => item.id === row.purchaseId) : null;
+  if (data.status === "Teslim Alındı" && linkedPurchase) {
+    const inventoryError = purchaseInventoryError(linkedPurchase, purchaseOrderReceiptData(pendingOrder, linkedPurchase));
+    if (inventoryError) return toast(inventoryError);
+  }
+  const wasEdit = Boolean(row);
+  if (row) Object.assign(row, pendingOrder);
+  else { row = { ...pendingOrder, createdAt: new Date().toISOString() }; target.push(row); }
+  request.status = data.status === "Teslim Alındı" ? "Tamamlandı" : "Siparişe Dönüştü";
+  request.updatedAt = new Date().toISOString();
+  if (data.status === "Teslim Alındı") syncPurchaseOrderReceipt(row);
+  audit(wasEdit ? "Satınalma siparişi güncellendi" : "Satınalma siparişi oluşturuldu", row.number + " · " + row.supplier + (row.status === "Teslim Alındı" ? " · alış/depo girişi oluştu" : ""));
+  persist(); closeModal(); renderPage(); toast(row.status === "Teslim Alındı" ? "Sipariş teslim alındı; alış ve depo girişi oluşturuldu." : wasEdit ? "Satınalma siparişi güncellendi." : "Satınalma siparişi oluşturuldu.");
+}
+
+function saveAdministrativeTask(data) {
+  const target = state.db.records.administrative_tasks ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const project = data.projectId ? records("projects").find(item => item.id === data.projectId) : null;
+  const site = data.siteId ? records("sites").find(item => item.id === data.siteId) : null;
+  const staff = records("staff").find(item => item.id === data.staffId && item.status !== "Ayrıldı");
+  if (data.projectId && !project) return toast("Geçerli proje seçmelisiniz.");
+  if (site && (!project || site.project !== project.name)) return toast("Seçilen şantiye projeye bağlı değil.");
+  if (!staff) return toast("İdari iş için aktif sorumlu personel seçmelisiniz.");
+  const wasEdit = Boolean(row);
+  const task = {
+    number: row?.number || nextWorkflowNumber("administrative_tasks", "IDR"), category: data.category,
+    projectId: project?.id || "", project: project?.name || "Genel", siteId: site?.id || "", site: site?.name || "—",
+    staffId: staff.id, responsible: staff.name, dueDate: data.dueDate, priority: data.priority, status: data.status,
+    description: data.description.trim(), updatedAt: new Date().toISOString()
+  };
+  if (row) Object.assign(row, task);
+  else { row = { id: uid(), ...task, createdAt: new Date().toISOString() }; target.push(row); }
+  audit(wasEdit ? "İdari iş güncellendi" : "İdari iş oluşturuldu", row.number + " · " + row.category);
+  persist(); closeModal(); renderPage(); toast(wasEdit ? "İdari iş güncellendi." : "İdari iş oluşturuldu.");
+}
+
 async function saveRecord(event) {
   event.preventDefault();
   const section = window.YAPI360_SECTIONS[state.page];
@@ -1950,6 +2254,10 @@ async function saveRecord(event) {
   if (section.specialForm === "subcontractor") return saveSubcontractorRecord(data);
   if (section.specialForm === "staff") return saveStaffRecord(data);
   if (section.specialForm === "staffAssignment") return saveStaffAssignment(data);
+  if (section.specialForm === "purchaseRequest") return savePurchaseRequest(data);
+  if (section.specialForm === "supplierQuote") return saveSupplierQuote(data);
+  if (section.specialForm === "purchaseOrder") return savePurchaseOrder(data);
+  if (section.specialForm === "administrativeTask") return saveAdministrativeTask(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
@@ -2283,6 +2591,21 @@ function recordName(row) {
   return row.name || row.staffName || row.itemName || row.number || row.description || row.customer || row.supplier || row.email || "Kayıt";
 }
 
+function reverseProcurementLink(page, row) {
+  if (page === "supplier_quotes") {
+    const request = records("purchase_requests").find(item => item.id === row.requestId);
+    const remaining = records("supplier_quotes").filter(item => item.id !== row.id && item.requestId === row.requestId);
+    if (request) {
+      request.status = remaining.some(item => item.status === "Onaylandı") ? "Onaylandı" : remaining.length ? "Teklif Toplanıyor" : "Onaylandı";
+      request.updatedAt = new Date().toISOString();
+    }
+  }
+  if (page === "purchase_orders") {
+    const request = records("purchase_requests").find(item => item.id === row.requestId);
+    if (request) { request.status = "Onaylandı"; request.updatedAt = new Date().toISOString(); }
+  }
+}
+
 function deleteRecord(id) {
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   const index = target.findIndex(item => item.id === id);
@@ -2295,6 +2618,7 @@ function deleteRecord(id) {
   if (state.page === "cash") reverseCashMovement(target[index]);
   if (state.page === "warehouse") reverseWarehouseMovement(target[index]);
   if (state.page === "purchases") reversePurchaseInventory(target[index]);
+  if (["supplier_quotes", "purchase_orders"].includes(state.page)) reverseProcurementLink(state.page, target[index]);
   const [removed] = target.splice(index, 1);
   audit("Kayıt silindi", window.YAPI360_SECTIONS[state.page].title + " · " + recordName(removed));
   persist();
@@ -2437,7 +2761,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.13.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.14.0", { updateViaCache: "none" });
     registration.update();
   });
 }
