@@ -53,8 +53,14 @@ window.YAPI360_SECTIONS = {
     fields: [f("name", "Cari adı"), f("type", "Tür", "select", { options: ["Müşteri", "Tedarikçi", "Taşeron", "Arsa Sahibi"] }), f("phone", "Telefon", "tel"), f("taxId", "Vergi / TC no"), f("openingBalance", "Açılış bakiyesi", "number")]
   },
   staff: {
-    title: "Personeller", icon: "♟", description: "Personel, görev, maaş ve avans takibi.",
-    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
+    title: "Personeller", icon: "♟", description: "Personel özlük, iletişim, adres ve işe giriş/çıkış evrakları.", specialForm: "staff",
+    fields: [
+      f("photo", "Fotoğraf", "staffPhoto"), f("name", "Ad soyad"), f("role", "Görev"), f("phone", "Telefon", "tel"),
+      f("email", "E-posta", "email", { table: false }), f("address", "Adres", "textarea", { table: false }),
+      f("hireDate", "İşe giriş", "date"), f("monthlySalary", "Aylık ücret", "number"),
+      f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] }),
+      f("documents", "Özlük evrakları", "staffDocuments")
+    ]
   },
   staff_assignments: {
     title: "Personel Görevlendirme", icon: "⇄", description: "Personelin proje ve şantiye görevlendirmelerini tarih aralığıyla izleyin.", specialForm: "staffAssignment",
