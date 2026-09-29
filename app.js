@@ -11,6 +11,9 @@ const STAFF_TYPES = new Set(["Maaş Ödeme", "Avans Ödeme"]);
 const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"]);
 const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
 const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "sites", "staff", "inventory"]);
+const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+const MAX_STAFF_DOCUMENT_BYTES = 1500000;
+const MAX_STAFF_DOCUMENT_TOTAL_BYTES = 2500000;
 const REFERENCE_FIELDS = {
   contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"] },
   projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"] },
@@ -35,6 +38,7 @@ const state = {
   page: "dashboard",
   user: null,
   editId: null,
+  staffDraft: null,
   sort: { field: "", direction: 1 },
   timesheetPeriod: new Date().toISOString().slice(0, 7),
   timesheetDate: new Date().toISOString().slice(0, 10)
@@ -277,7 +281,7 @@ function renderList(section, sourceRows) {
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
     ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
-    ${state.page === "staff" ? '<div class="callout">Personel kartı özlük ve ücret bilgisidir. Çalışacağı proje ve şantiyeleri tarih aralığıyla Personel Görevlendirme sekmesinden kaydedin.</div>' : ""}
+    ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
     ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
     <div class="toolbar">
@@ -318,6 +322,16 @@ function renderRows(query = "") {
 }
 
 function formatCell(field, value, row) {
+  if (field.type === "staffPhoto") {
+    return value?.dataUrl && /^data:image\/(jpeg|png|webp);base64,/.test(value.dataUrl)
+      ? `<img class="staff-table-photo" src="${value.dataUrl}" alt="${escapeHtml(row.name || "Personel")} fotoğrafı">`
+      : '<span class="staff-photo-placeholder small">♟</span>';
+  }
+  if (field.type === "staffDocuments") {
+    const documents = [row.entryDocument, row.exitDocument, ...(Array.isArray(row.documents) ? row.documents : [])].filter(Boolean);
+    const complete = row.entryDocument && (row.status !== "Ayrıldı" || row.exitDocument);
+    return `<span class="badge ${complete ? "" : "warning"}">${documents.length} evrak${complete ? "" : " · eksik"}</span>`;
+  }
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
   if (["status", "paymentStatus", "type", "transactionType", "movementType"].includes(field.name)) {
@@ -328,7 +342,7 @@ function formatCell(field, value, row) {
 }
 
 function moneyField(name) {
-  return ["budget", "contractAmount", "paid", "amount", "total", "collected", "openingBalance", "monthlySalary", "advance"].includes(name);
+  return ["budget", "contractAmount", "paid", "amount", "total", "collected", "openingBalance", "monthlySalary"].includes(name);
 }
 
 function contactSummary() {
@@ -362,10 +376,10 @@ function renderStaffLedger() {
   const rows = records("staff").map(item => {
     const movements = records("cash").filter(movement => movement.staffId === item.id);
     const salaryPaid = movements.filter(movement => movement.transactionType === "Maaş Ödeme").reduce((sum, movement) => sum + number(movement.amount), 0);
-    const advancePaid = number(item.advance) + movements.filter(movement => movement.transactionType === "Avans Ödeme").reduce((sum, movement) => sum + number(movement.amount), 0);
+    const advancePaid = movements.filter(movement => movement.transactionType === "Avans Ödeme").reduce((sum, movement) => sum + number(movement.amount), 0);
     return [item.name, item.role, money.format(number(item.monthlySalary)), money.format(salaryPaid), money.format(advancePaid), money.format(number(item.monthlySalary) - salaryPaid - advancePaid)];
   });
-  return reportTable(["Personel", "Görev", "Aylık Ücret", "Maaş Ödemesi", "Avans", "Kalan"], rows, "Maaş ve avans ödeme fişleri personel kartıyla ilişkilendirilir.");
+  return reportTable(["Personel", "Görev", "Aylık Ücret", "Maaş Ödemesi", "Avans", "Kalan"], rows, "Maaş ve avans tutarları yalnızca Kasa & Finans Hareketleri kayıtlarından hesaplanır.");
 }
 
 function renderStaffAssignmentReport() {
@@ -593,7 +607,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.4.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.5.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -635,12 +649,6 @@ function bindPage() {
     state.sort.field = field;
     renderRows($("#search").value);
   }));
-  $("#tableBody").addEventListener("click", event => {
-    const edit = event.target.closest("[data-edit]");
-    const remove = event.target.closest("[data-delete]");
-    if (edit) openModal(edit.dataset.edit);
-    if (remove) deleteRecord(remove.dataset.delete);
-  });
 }
 
 function fieldInput(field, value = "") {
@@ -811,6 +819,182 @@ function openWarehouseModal() {
   $("#recordModal").classList.add("open");
 }
 
+function staffFileSize(size = 0) {
+  if (size < 1024) return size + " B";
+  if (size < 1024 * 1024) return (size / 1024).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " KB";
+  return (size / 1024 / 1024).toLocaleString("tr-TR", { maximumFractionDigits: 1 }) + " MB";
+}
+
+function readFileDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Dosya okunamadı."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Fotoğraf açılamadı.")); };
+    image.src = url;
+  });
+}
+
+async function createStaffPhoto(file) {
+  if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Fotoğraf JPG, PNG veya WebP biçiminde olmalıdır.");
+  const image = await loadImageFile(file);
+  const scale = Math.min(1, 720 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+  const size = Math.ceil((dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75);
+  return { id: uid(), name: file.name.replace(/\.[^.]+$/, "") + ".jpg", type: "image/jpeg", size, dataUrl, addedAt: new Date().toISOString() };
+}
+
+async function createStaffDocument(file) {
+  const extensionAllowed = /\.(pdf|jpe?g|png|webp|docx?)$/i.test(file.name);
+  if (!STAFF_DOCUMENT_TYPES.has(file.type) && !extensionAllowed) throw new Error("Evrak PDF, JPG, PNG, WebP, DOC veya DOCX biçiminde olmalıdır.");
+  if (file.size > MAX_STAFF_DOCUMENT_BYTES) throw new Error(`${file.name} en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)} olabilir.`);
+  return { id: uid(), name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl: await readFileDataUrl(file), addedAt: new Date().toISOString() };
+}
+
+function staffDocumentBytes(draft = state.staffDraft) {
+  if (!draft) return 0;
+  return [draft.entryDocument, draft.exitDocument, ...(draft.documents || [])].filter(Boolean).reduce((sum, file) => sum + number(file.size), 0);
+}
+
+function staffDraftAttachment(slot, index) {
+  if (!state.staffDraft) return null;
+  return slot === "documents" ? state.staffDraft.documents[index] : state.staffDraft[slot];
+}
+
+function staffAttachmentCard(file, slot, index = 0) {
+  if (!file) return '<span class="staff-file-empty">Henüz dosya eklenmedi.</span>';
+  return `<article class="staff-file-card"><span class="staff-file-icon">▤</span><div><strong>${escapeHtml(file.name)}</strong><small>${staffFileSize(file.size)}</small></div><button class="btn ghost small" type="button" data-staff-file-download="${slot}" data-file-index="${index}">İndir</button><button class="btn danger small" type="button" data-staff-file-remove="${slot}" data-file-index="${index}">Kaldır</button></article>`;
+}
+
+function renderStaffDraftFiles() {
+  const draft = state.staffDraft;
+  if (!draft) return;
+  const photoPreview = $("#staffPhotoPreview");
+  if (photoPreview) {
+    if (draft.photo?.dataUrl && /^data:image\/(jpeg|png|webp);base64,/.test(draft.photo.dataUrl)) {
+      photoPreview.innerHTML = '<img alt="Personel fotoğrafı">';
+      photoPreview.querySelector("img").src = draft.photo.dataUrl;
+    } else photoPreview.innerHTML = '<span>♟</span><small>Fotoğraf yok</small>';
+  }
+  if ($("#staffPhotoRemove")) $("#staffPhotoRemove").hidden = !draft.photo;
+  if ($("#staffEntryDocument")) $("#staffEntryDocument").innerHTML = staffAttachmentCard(draft.entryDocument, "entryDocument");
+  if ($("#staffExitDocument")) $("#staffExitDocument").innerHTML = staffAttachmentCard(draft.exitDocument, "exitDocument");
+  if ($("#staffExtraDocuments")) $("#staffExtraDocuments").innerHTML = draft.documents.length
+    ? draft.documents.map((file, index) => staffAttachmentCard(file, "documents", index)).join("")
+    : '<span class="staff-file-empty">Ek personel evrakı bulunmuyor.</span>';
+  if ($("#staffDocumentUsage")) $("#staffDocumentUsage").textContent = `${staffFileSize(staffDocumentBytes(draft))} / ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)}`;
+}
+
+function updateStaffExitFields() {
+  const separated = $("#field-status")?.value === "Ayrıldı";
+  if ($("#staffExitSection")) $("#staffExitSection").hidden = !separated;
+  if ($("#field-exitDate")) $("#field-exitDate").required = separated;
+}
+
+async function setStaffDocument(slot, file) {
+  const document = await createStaffDocument(file);
+  const previous = state.staffDraft[slot];
+  state.staffDraft[slot] = document;
+  if (staffDocumentBytes() > MAX_STAFF_DOCUMENT_TOTAL_BYTES) {
+    state.staffDraft[slot] = previous;
+    throw new Error(`Personel evraklarının toplamı ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)} sınırını aşamaz.`);
+  }
+  renderStaffDraftFiles();
+}
+
+function bindStaffFileInput(selector, handler) {
+  $(selector)?.addEventListener("change", async event => {
+    const files = [...event.target.files];
+    event.target.value = "";
+    if (!files.length) return;
+    try { await handler(files); } catch (error) { toast(error.message); }
+  });
+}
+
+function bindStaffForm() {
+  bindStaffFileInput("#staffPhotoCamera", async ([file]) => { state.staffDraft.photo = await createStaffPhoto(file); renderStaffDraftFiles(); });
+  bindStaffFileInput("#staffPhotoFile", async ([file]) => { state.staffDraft.photo = await createStaffPhoto(file); renderStaffDraftFiles(); });
+  bindStaffFileInput("#staffEntryFile", async ([file]) => setStaffDocument("entryDocument", file));
+  bindStaffFileInput("#staffExitFile", async ([file]) => setStaffDocument("exitDocument", file));
+  bindStaffFileInput("#staffExtraFiles", async files => {
+    const additions = await Promise.all(files.map(createStaffDocument));
+    if (staffDocumentBytes() + additions.reduce((sum, file) => sum + file.size, 0) > MAX_STAFF_DOCUMENT_TOTAL_BYTES) throw new Error(`Personel evraklarının toplamı ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)} sınırını aşamaz.`);
+    state.staffDraft.documents.push(...additions);
+    renderStaffDraftFiles();
+  });
+  $("#staffPhotoRemove")?.addEventListener("click", () => { state.staffDraft.photo = null; renderStaffDraftFiles(); });
+  $("#field-status")?.addEventListener("change", updateStaffExitFields);
+  $("#recordFields").onclick = event => {
+    const download = event.target.closest("[data-staff-file-download]");
+    const remove = event.target.closest("[data-staff-file-remove]");
+    if (download) {
+      const file = staffDraftAttachment(download.dataset.staffFileDownload, number(download.dataset.fileIndex));
+      if (file?.dataUrl) {
+        const anchor = document.createElement("a");
+        anchor.href = file.dataUrl;
+        anchor.download = file.name;
+        anchor.click();
+      }
+    }
+    if (remove) {
+      const slot = remove.dataset.staffFileRemove;
+      const index = number(remove.dataset.fileIndex);
+      if (slot === "documents") state.staffDraft.documents.splice(index, 1);
+      else state.staffDraft[slot] = null;
+      renderStaffDraftFiles();
+    }
+  };
+  updateStaffExitFields();
+  renderStaffDraftFiles();
+}
+
+function openStaffModal(id = null) {
+  const row = records("staff").find(item => item.id === id) || {};
+  state.editId = id;
+  state.staffDraft = {
+    photo: row.photo || null,
+    entryDocument: row.entryDocument || null,
+    exitDocument: row.exitDocument || null,
+    documents: Array.isArray(row.documents) ? [...row.documents] : []
+  };
+  $("#recordModal").classList.add("staff-modal");
+  $("#modalTitle").textContent = "Personel Kartı" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <section class="staff-profile-editor full-field">
+      <div class="staff-photo-frame" id="staffPhotoPreview"></div>
+      <div class="staff-photo-actions"><strong>Personel fotoğrafı</strong><small>Mobil cihazda kamerayı kullanabilir veya mevcut bir fotoğraf seçebilirsiniz.</small><div class="actions"><label class="btn ghost small" for="staffPhotoCamera">Kameradan Çek</label><input id="staffPhotoCamera" type="file" accept="image/jpeg,image/png,image/webp" capture="user" hidden><label class="btn ghost small" for="staffPhotoFile">Dosyadan Seç</label><input id="staffPhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden><button class="btn danger small" id="staffPhotoRemove" type="button">Kaldır</button></div></div>
+    </section>
+    <div class="field"><label for="field-name">Ad soyad</label><input class="input" id="field-name" name="name" value="${escapeHtml(row.name || "")}" required></div>
+    <div class="field"><label for="field-role">Görev</label><input class="input" id="field-role" name="role" value="${escapeHtml(row.role || "")}" required></div>
+    <div class="field"><label for="field-phone">Telefon</label><input class="input" id="field-phone" name="phone" type="tel" value="${escapeHtml(row.phone || "")}" required></div>
+    <div class="field"><label for="field-email">E-posta</label><input class="input" id="field-email" name="email" type="email" value="${escapeHtml(row.email || "")}"></div>
+    <div class="field full-field"><label for="field-address">Adres</label><textarea class="input staff-address" id="field-address" name="address" rows="3" required>${escapeHtml(row.address || "")}</textarea></div>
+    <div class="field"><label for="field-hireDate">İşe giriş tarihi</label><input class="input" id="field-hireDate" name="hireDate" type="date" value="${escapeHtml(row.hireDate || "")}" required></div>
+    <div class="field"><label for="field-monthlySalary">Aylık ücret</label><input class="input" id="field-monthlySalary" name="monthlySalary" type="number" min="0" step="0.01" value="${escapeHtml(row.monthlySalary || "")}" required></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required><option ${row.status === "Aktif" || !row.status ? "selected" : ""}>Aktif</option><option ${row.status === "İzinli" ? "selected" : ""}>İzinli</option><option ${row.status === "Ayrıldı" ? "selected" : ""}>Ayrıldı</option></select></div>
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>İşe giriş evrakı</strong><small>Personel kaydı için zorunludur.</small></div><label class="btn ghost small" for="staffEntryFile">Dosya Seç</label><input id="staffEntryFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" hidden></div><div id="staffEntryDocument"></div></section>
+    <section class="staff-document-section full-field" id="staffExitSection" hidden><div class="staff-section-head"><div><strong>İşten çıkış evrakı</strong><small>Personel “Ayrıldı” durumuna geçtiğinde tarih ve evrak zorunludur.</small></div><label class="btn ghost small" for="staffExitFile">Dosya Seç</label><input id="staffExitFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" hidden></div><div class="field"><label for="field-exitDate">İşten çıkış tarihi</label><input class="input" id="field-exitDate" name="exitDate" type="date" value="${escapeHtml(row.exitDate || "")}"></div><div id="staffExitDocument"></div></section>
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Diğer personel dosyaları</strong><small>Kimlik, sözleşme, sertifika ve benzeri evraklar. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="staffExtraFiles">Dosya Ekle</label><input id="staffExtraFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" multiple hidden></div><div id="staffExtraDocuments" class="staff-file-list"></div><small class="staff-storage-note">Evrak kullanımı: <strong id="staffDocumentUsage"></strong></small></section>`;
+  bindStaffForm();
+  $("#recordModal").classList.add("open");
+}
+
 function openStaffAssignmentModal(id = null) {
   const row = records("staff_assignments").find(item => item.id === id) || {};
   const staff = records("staff");
@@ -834,6 +1018,7 @@ function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
   if (section.specialForm === "cash") return openCashModal(id);
   if (section.specialForm === "warehouse") return openWarehouseModal();
+  if (section.specialForm === "staff") return openStaffModal(id);
   if (section.specialForm === "staffAssignment") return openStaffAssignmentModal(id);
   const source = state.page === "users" ? state.db.users : records(state.page);
   const row = source.find(item => item.id === id) || {};
@@ -991,12 +1176,73 @@ function reversePurchaseInventory(purchase) {
   warehouse.splice(warehouse.indexOf(movement), 1);
 }
 
+function saveStaffRecord(data) {
+  const target = state.db.records.staff ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const wasEdit = Boolean(row);
+  const previousRow = row ? { ...row, documents: [...(row.documents || [])] } : null;
+  const previousName = row?.name;
+  const previousStatus = row?.status;
+  const name = data.name.trim();
+  if (target.some(item => item.id !== state.editId && item.name.toLocaleLowerCase("tr") === name.toLocaleLowerCase("tr"))) return toast("Bu adla daha önce bir personel kaydı oluşturulmuş.");
+  if (!state.staffDraft?.entryDocument) return toast("Personel kaydı için işe giriş evrakı eklemelisiniz.");
+  if (data.status === "Ayrıldı" && !data.exitDate) return toast("Ayrılan personel için işten çıkış tarihi zorunludur.");
+  if (data.status === "Ayrıldı" && !state.staffDraft.exitDocument) return toast("Ayrılan personel için işten çıkış evrakı eklemelisiniz.");
+  if (data.exitDate && data.hireDate && data.exitDate < data.hireDate) return toast("İşten çıkış tarihi işe giriş tarihinden önce olamaz.");
+  if (staffDocumentBytes() > MAX_STAFF_DOCUMENT_TOTAL_BYTES) return toast("Personel evraklarının toplam boyutu sınırı aşıyor.");
+
+  const profile = {
+    name,
+    role: data.role.trim(),
+    phone: data.phone.trim(),
+    email: data.email.trim().toLocaleLowerCase("tr"),
+    address: data.address.trim(),
+    hireDate: data.hireDate,
+    monthlySalary: data.monthlySalary,
+    status: data.status,
+    exitDate: data.status === "Ayrıldı" ? data.exitDate : (row?.exitDate || ""),
+    photo: state.staffDraft.photo,
+    entryDocument: state.staffDraft.entryDocument,
+    exitDocument: state.staffDraft.exitDocument,
+    documents: state.staffDraft.documents,
+    updatedAt: new Date().toISOString()
+  };
+  if (row) {
+    if (previousName && previousName !== name) updateNamedReferences("staff", row.id, previousName, name);
+    Object.assign(row, profile);
+    delete row.advance;
+  } else {
+    row = { id: uid(), ...profile, createdAt: new Date().toISOString() };
+    target.push(row);
+  }
+  const action = previousStatus !== "Ayrıldı" && data.status === "Ayrıldı"
+    ? "Personel işten ayrıldı"
+    : wasEdit ? "Personel kartı güncellendi" : "Personel kartı oluşturuldu";
+  audit(action, name);
+  try {
+    persist();
+  } catch {
+    state.db.audit.shift();
+    if (!wasEdit) target.splice(target.indexOf(row), 1);
+    else {
+      Object.keys(row).forEach(key => delete row[key]);
+      Object.assign(row, previousRow);
+      if (previousName !== name) updateNamedReferences("staff", row.id, name, previousName);
+    }
+    return toast("Dosyalar bu cihazın yerel saklama sınırını aştı. Daha küçük dosyalar seçin.");
+  }
+  closeModal();
+  renderPage();
+  toast(wasEdit ? "Personel kartı güncellendi." : "Personel kartı oluşturuldu.");
+}
+
 async function saveRecord(event) {
   event.preventDefault();
   const section = window.YAPI360_SECTIONS[state.page];
   const data = Object.fromEntries(new FormData(event.target));
   if (section.specialForm === "cash") return saveCashRecord(data);
   if (section.specialForm === "warehouse") return saveWarehouseRecord(data);
+  if (section.specialForm === "staff") return saveStaffRecord(data);
   if (section.specialForm === "staffAssignment") return saveStaffAssignment(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
@@ -1296,8 +1542,11 @@ function deleteRecord(id) {
 
 function closeModal() {
   $("#recordModal").classList.remove("open");
+  $("#recordModal").classList.remove("staff-modal");
+  $("#recordFields").onclick = null;
   $("#recordForm").reset();
   state.editId = null;
+  state.staffDraft = null;
 }
 
 function saveSettings(event) {
@@ -1313,7 +1562,12 @@ function exportCsv() {
   const section = window.YAPI360_SECTIONS[state.page];
   const fields = tableFields(section);
   const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : records(state.page);
-  const csv = [fields.map(field => field.label), ...source.map(row => fields.map(field => row[field.name] ?? ""))]
+  const exportValue = (field, row) => {
+    if (field.type === "staffPhoto") return row.photo?.name || "";
+    if (field.type === "staffDocuments") return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
+    return row[field.name] ?? "";
+  };
+  const csv = [fields.map(field => field.label), ...source.map(row => fields.map(field => exportValue(field, row)))]
     .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
   downloadFile("yapi360-" + state.page + ".csv", "\ufeff" + csv, "text/csv");
   toast("CSV dosyası hazırlandı.");
@@ -1386,6 +1640,12 @@ $("#nav").addEventListener("click", event => {
   const item = event.target.closest("[data-page]");
   if (item) navigate(item.dataset.page);
 });
+$("#content").addEventListener("click", event => {
+  const edit = event.target.closest("[data-edit]");
+  const remove = event.target.closest("[data-delete]");
+  if (edit) openModal(edit.dataset.edit);
+  if (remove) deleteRecord(remove.dataset.delete);
+});
 $("#logoutBtn").addEventListener("click", logout);
 $("#menuToggle").addEventListener("click", openSidebar);
 $("#sideClose").addEventListener("click", closeSidebar);
@@ -1398,7 +1658,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.4.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.5.0", { updateViaCache: "none" });
     registration.update();
   });
 }
