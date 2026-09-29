@@ -1,4 +1,4 @@
-# Yapı360 v4
+# Yapı360 v4.1
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -12,6 +12,10 @@
 
 - Ödenmiş alış işlemi → kasa gideri + proje maliyet analizi + cari hesap sonucu
 - Satış ve tahsilat → kasa geliri + müşteri cari bakiyesi
+- Ödeme/tahsilat → isteğe bağlı alış/satış bağlantısı + kalan tutarın otomatik güncellenmesi
+- Çek/senet tahsilatı → portföy kaydı + satış ve cari bakiyesinin güncellenmesi
+- Çek/senet ödemesi → uygun müşteri çek/senet listesinden seçim + ciro + tedarikçi bakiyesinin güncellenmesi
+- Borç/alacak dekontu → nakdi etkilemeden cari hesap bakiyesinin güncellenmesi
 - Personel ücret ve avans → personel hesap hareketi sonucu
 - Proje bütçesi + projeye bağlı alışlar → bütçe kullanım oranı
 - Kritik seviye altındaki stok → yönetim paneli uyarısı
