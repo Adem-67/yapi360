@@ -16,16 +16,16 @@ window.YAPI360_SECTIONS = {
     fields: [f("name", "Proje adı"), f("location", "Konum"), f("budget", "Bütçe", "number"), f("progress", "İlerleme (%)", "number"), f("status", "Durum", "select", { options: ["Planlama", "Aktif", "Tamamlandı", "Beklemede"] })]
   },
   contracts: {
-    title: "Sözleşmeler", icon: "▤", description: "Arsa sahibi, taşeron, satış ve tedarik sözleşmeleri.",
-    fields: [f("name", "Sözleşme"), f("party", "Taraf / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("date", "Tarih", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] })]
+    title: "Sözleşmeler", icon: "▤", description: "Tarih aralığı ve dosyalarıyla arsa sahibi, taşeron, satış ve tedarik sözleşmeleri.", specialForm: "contract",
+    fields: [f("name", "Sözleşme"), f("party", "Taraf / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("startDate", "Başlangıç", "date"), f("endDate", "Bitiş", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] }), f("documents", "Dosyalar", "contractDocuments")]
   },
   sites: {
     title: "Şantiyeler", icon: "◓", description: "Projeye bağlı şantiye, sorumlu ve planlanan çalışma tarihleri.",
     fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje", "relation", { source: "projects" }), f("manager", "Sorumlu", "relation", { source: "staff" }), f("setupDate", "Şantiye kurulum tarihi", "date"), f("plannedEndDate", "Planlanan bitiş tarihi", "date")]
   },
   subcontractors: {
-    title: "Taşeronlar", icon: "▧", description: "Taşeron sözleşmesi, uzmanlık ve bakiye takibi.",
-    fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("materialProvision", "Malzeme sorumluluğu", "select", { options: ["Taşeron Sağlar", "Firma Sağlar"] }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
+    title: "Taşeronlar", icon: "▧", description: "Cariyle eşleşen sözleşme, proje, uzmanlık ve bakiye takibi.", specialForm: "subcontractor",
+    fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("contract", "Sözleşme"), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("materialProvision", "Malzeme sorumluluğu", "select", { options: ["Taşeron Sağlar", "Firma Sağlar"] }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
   },
   progress: {
     title: "Hakedişler", icon: "₺", description: "Hakediş hazırlama, onay ve ödeme akışı.",
