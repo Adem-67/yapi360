@@ -1,4 +1,4 @@
-# Yapı360 v4.5
+# Yapı360 v4.6
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -22,6 +22,7 @@
 - Kritik seviye altındaki stok → yönetim paneli uyarısı
 - Cari, proje, şantiye, personel ve stok bağlantıları → önceden tanımlı kayıtlardan seçim
 - Bağımsız personel kartı → tarih aralıklı proje/şantiye görevlendirmesi + personel çalışma yeri geçmişi
+- Şantiye kartı → proje + sorumlu + kurulum tarihi + planlanan bitiş tarihi
 - Günlük puantaj → tarihte geçerli görevlendirmeden proje/şantiye seçimi + tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı
 - Ana depo sevki → proje + projeye bağlı şantiye + sevk eden personel + stok düşümü

@@ -20,8 +20,8 @@ window.YAPI360_SECTIONS = {
     fields: [f("name", "Sözleşme"), f("party", "Taraf / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("date", "Tarih", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] })]
   },
   sites: {
-    title: "Şantiyeler", icon: "◓", description: "Şantiye iş kalemleri ve plan-gerçekleşen ilerleme.",
-    fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje", "relation", { source: "projects" }), f("manager", "Sorumlu", "relation", { source: "staff" }), f("planned", "Planlanan (%)", "number"), f("actual", "Gerçekleşen (%)", "number")]
+    title: "Şantiyeler", icon: "◓", description: "Projeye bağlı şantiye, sorumlu ve planlanan çalışma tarihleri.",
+    fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje", "relation", { source: "projects" }), f("manager", "Sorumlu", "relation", { source: "staff" }), f("setupDate", "Şantiye kurulum tarihi", "date"), f("plannedEndDate", "Planlanan bitiş tarihi", "date")]
   },
   subcontractors: {
     title: "Taşeronlar", icon: "▧", description: "Taşeron sözleşmesi, uzmanlık ve bakiye takibi.",

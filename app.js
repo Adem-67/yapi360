@@ -607,7 +607,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.5.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.6.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -1263,6 +1263,9 @@ async function saveRecord(event) {
     const inventoryError = purchaseInventoryError(previousRow, data);
     if (inventoryError) return toast(inventoryError);
   }
+  if (state.page === "sites" && data.plannedEndDate < data.setupDate) {
+    return toast("Planlanan bitiş tarihi şantiye kurulum tarihinden önce olamaz.");
+  }
 
   if (row) {
     const passwordHash = row.passwordHash;
@@ -1658,7 +1661,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.5.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.6.0", { updateViaCache: "none" });
     registration.update();
   });
 }
