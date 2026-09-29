@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.5.0", "data.js?v=4.5.0", "app.js?v=4.5.0", "manifest.webmanifest?v=4.5.0"]) {
+for (const asset of ["styles.css?v=4.6.0", "data.js?v=4.6.0", "app.js?v=4.6.0", "manifest.webmanifest?v=4.6.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.5.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.6.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -36,6 +36,8 @@ if (!data.includes('timesheets') || !app.includes("saveTimesheetDay")) throw new
 if (!data.includes('staff_assignments') || !app.includes("saveStaffAssignment") || !app.includes("timesheetAssignmentOptions")) throw new Error("Dönemsel personel görevlendirme ilişkisi eksik.");
 if (!app.includes("openStaffModal") || !app.includes("createStaffPhoto") || !app.includes("entryDocument") || !app.includes("exitDocument")) throw new Error("Personel özlük dosyası ve evrak akışı eksik.");
 if (data.includes('f("advance", "Avans"')) throw new Error("Personel kartında avans alanı kalmış; avans yalnızca kasa hareketinde tutulmalıdır.");
+if (!data.includes('f("setupDate", "Şantiye kurulum tarihi", "date")') || !data.includes('f("plannedEndDate", "Planlanan bitiş tarihi", "date")')) throw new Error("Şantiye kurulum ve planlanan bitiş tarihleri eksik.");
+if (data.includes('f("planned", "Planlanan (%)"') || data.includes('f("actual", "Gerçekleşen (%)"')) throw new Error("Şantiye kartında elle girilen ilerleme yüzdeleri kalmış.");
 if (!data.includes('"relation"')) throw new Error("Tanımlı kayıt seçimleri eksik.");
 if (!data.includes('warehouse_report') || !app.includes("saveWarehouseRecord") || !app.includes("syncPurchaseInventory")) throw new Error("Ana depo ve sevkiyat ilişkisi eksik.");
 if (!app.includes("Taşerona Malzeme") || !data.includes("materialProvision")) throw new Error("Taşeron malzeme akışı eksik.");
