@@ -28,8 +28,8 @@ window.YAPI360_SECTIONS = {
     fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("contract", "Sözleşme"), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("materialProvision", "Malzeme sorumluluğu", "select", { options: ["Taşeron Sağlar", "Firma Sağlar"] }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
   },
   progress: {
-    title: "Hakedişler", icon: "₺", description: "Hakediş hazırlama, onay ve ödeme akışı.",
-    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] })]
+    title: "Hakedişler", icon: "₺", description: "Dosyalarıyla birlikte hakediş hazırlama, onay ve ödeme akışı.", specialForm: "progress",
+    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
   },
   cash: {
     title: "Kasa & Finans Hareketleri", icon: "↻", description: "Nakit, dekont, personel, çek ve senet işlemlerinin ilişkili kayıtları.",
