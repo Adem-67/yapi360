@@ -2,7 +2,7 @@ window.YAPI360_NAV = [
   { label: "GENEL", items: ["dashboard"] },
   { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
   { label: "FİNANS", items: ["cash", "purchases", "sales", "checks"] },
-  { label: "OPERASYON", items: ["contacts", "staff", "inventory", "assets", "categories"] },
+  { label: "OPERASYON", items: ["contacts", "staff", "timesheets", "inventory", "assets", "categories"] },
   { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "cost_analysis"] },
   { label: "YÖNETİM", items: ["users", "settings", "audit"] }
 ];
@@ -17,19 +17,19 @@ window.YAPI360_SECTIONS = {
   },
   contracts: {
     title: "Sözleşmeler", icon: "▤", description: "Arsa sahibi, taşeron, satış ve tedarik sözleşmeleri.",
-    fields: [f("name", "Sözleşme"), f("party", "Taraf"), f("project", "Proje"), f("date", "Tarih", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] })]
+    fields: [f("name", "Sözleşme"), f("party", "Taraf / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("date", "Tarih", "date"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "İmzalandı", "Sona Erdi"] })]
   },
   sites: {
     title: "Şantiyeler", icon: "◓", description: "Şantiye iş kalemleri ve plan-gerçekleşen ilerleme.",
-    fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje"), f("manager", "Sorumlu"), f("planned", "Planlanan (%)", "number"), f("actual", "Gerçekleşen (%)", "number")]
+    fields: [f("name", "Şantiye / iş kalemi"), f("project", "Proje", "relation", { source: "projects" }), f("manager", "Sorumlu", "relation", { source: "staff" }), f("planned", "Planlanan (%)", "number"), f("actual", "Gerçekleşen (%)", "number")]
   },
   subcontractors: {
     title: "Taşeronlar", icon: "▧", description: "Taşeron sözleşmesi, uzmanlık ve bakiye takibi.",
-    fields: [f("name", "Firma"), f("specialty", "Uzmanlık"), f("project", "Proje"), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
+    fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
   },
   progress: {
     title: "Hakedişler", icon: "₺", description: "Hakediş hazırlama, onay ve ödeme akışı.",
-    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron"), f("project", "Proje"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] })]
+    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] })]
   },
   cash: {
     title: "Kasa & Finans Hareketleri", icon: "↻", description: "Nakit, dekont, personel, çek ve senet işlemlerinin ilişkili kayıtları.",
@@ -38,15 +38,15 @@ window.YAPI360_SECTIONS = {
   },
   purchases: {
     title: "Alış İşlemleri", icon: "🛒", description: "Tedarikçi, proje ve stokla ilişkili alış kayıtları.",
-    fields: [f("date", "Tarih", "date"), f("supplier", "Tedarikçi / cari"), f("project", "Proje"), f("item", "Stok / hizmet"), f("quantity", "Miktar", "number"), f("amount", "Toplam tutar", "number"), f("paymentStatus", "Ödeme", "select", { options: ["Ödenmedi", "Kısmi", "Ödendi"] })]
+    fields: [f("date", "Tarih", "date"), f("supplier", "Tedarikçi / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("item", "Stok / hizmet", "relation", { source: "inventory" }), f("quantity", "Miktar", "number"), f("amount", "Toplam tutar", "number"), f("paymentStatus", "Ödeme", "select", { options: ["Ödenmedi", "Kısmi", "Ödendi"] })]
   },
   sales: {
     title: "Satış & Tahsilat", icon: "▣", description: "Müşteri satışı, tahsilat ve kalan bakiye takibi.",
-    fields: [f("date", "Tarih", "date"), f("customer", "Müşteri / cari"), f("project", "Proje"), f("unit", "Bağımsız bölüm / hizmet"), f("total", "Satış bedeli", "number"), f("collected", "Tahsil edilen", "number"), f("status", "Durum", "select", { options: ["Teklif", "Sözleşme", "Devam Ediyor", "Tamamlandı", "Gecikme"] })]
+    fields: [f("date", "Tarih", "date"), f("customer", "Müşteri / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("unit", "Bağımsız bölüm / hizmet"), f("total", "Satış bedeli", "number"), f("collected", "Tahsil edilen", "number"), f("status", "Durum", "select", { options: ["Teklif", "Sözleşme", "Devam Ediyor", "Tamamlandı", "Gecikme"] })]
   },
   checks: {
     title: "Çek / Senet", icon: "▭", description: "Alınan ve verilen çek-senet vade takibi.",
-    fields: [f("type", "Tür", "select", { options: ["Alınan Çek", "Verilen Çek", "Alınan Senet", "Verilen Senet"] }), f("number", "Belge no"), f("party", "Cari"), f("bank", "Banka / düzenleyen"), f("dueDate", "Vade", "date"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Portföyde", "Tahsil Edildi", "Ciro Edildi", "Ödendi", "Karşılıksız", "İade"] })]
+    fields: [f("type", "Tür", "select", { options: ["Alınan Çek", "Verilen Çek", "Alınan Senet", "Verilen Senet"] }), f("number", "Belge no"), f("party", "Cari", "relation", { source: "contacts" }), f("bank", "Banka / düzenleyen"), f("dueDate", "Vade", "date"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Portföyde", "Tahsil Edildi", "Ciro Edildi", "Ödendi", "Karşılıksız", "İade"] })]
   },
   contacts: {
     title: "Cariler", icon: "▥", description: "Müşteri, tedarikçi ve taşeron cari kartları.",
@@ -54,15 +54,16 @@ window.YAPI360_SECTIONS = {
   },
   staff: {
     title: "Personeller", icon: "♟", description: "Personel, görev, maaş ve avans takibi.",
-    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("site", "Şantiye"), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
+    fields: [f("name", "Ad soyad"), f("role", "Görev"), f("site", "Şantiye", "relation", { source: "sites", optional: true }), f("monthlySalary", "Aylık ücret", "number"), f("advance", "Avans", "number"), f("status", "Durum", "select", { options: ["Aktif", "İzinli", "Ayrıldı"] })]
   },
+  timesheets: { title: "Puantaj Planı", icon: "◫", description: "Günlük çalışma durumu, yevmiye çarpanı ve aylık dönem toplamları.", special: "timesheets" },
   inventory: {
     title: "Stoklar / Hizmetler", icon: "▦", description: "Malzeme ve hizmet kartları, kritik stok kontrolü.",
-    fields: [f("name", "Stok / hizmet"), f("type", "Tür", "select", { options: ["Malzeme", "Hizmet"] }), f("category", "Kategori"), f("unit", "Birim"), f("onHand", "Mevcut", "number"), f("critical", "Kritik seviye", "number")]
+    fields: [f("name", "Stok / hizmet"), f("type", "Tür", "select", { options: ["Malzeme", "Hizmet"] }), f("supplier", "Varsayılan tedarikçi / cari", "relation", { source: "contacts", optional: true }), f("category", "Kategori"), f("unit", "Birim"), f("onHand", "Mevcut", "number"), f("critical", "Kritik seviye", "number")]
   },
   assets: {
     title: "Demirbaş Takibi", icon: "⚒", description: "Makine, araç ve ekipmanın zimmet ve bakım durumu.",
-    fields: [f("name", "Demirbaş"), f("serial", "Seri / plaka"), f("site", "Konum / şantiye"), f("assignedTo", "Zimmetli"), f("nextMaintenance", "Sonraki bakım", "date"), f("status", "Durum", "select", { options: ["Aktif", "Bakımda", "Arızalı", "Hurda"] })]
+    fields: [f("name", "Demirbaş"), f("serial", "Seri / plaka"), f("site", "Konum / şantiye", "relation", { source: "sites", optional: true }), f("assignedTo", "Zimmetli", "relation", { source: "staff", optional: true }), f("nextMaintenance", "Sonraki bakım", "date"), f("status", "Durum", "select", { options: ["Aktif", "Bakımda", "Arızalı", "Hurda"] })]
   },
   categories: {
     title: "Kategoriler", icon: "◆", description: "Finans, stok ve operasyon sınıflandırmaları.",

@@ -10,6 +10,14 @@ const CONTACT_TYPES = new Set(["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak De
 const STAFF_TYPES = new Set(["Maaş Ödeme", "Avans Ödeme"]);
 const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"]);
 const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
+const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "sites", "staff", "inventory"]);
+const REFERENCE_FIELDS = {
+  contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"] },
+  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"] },
+  sites: { staff: ["site"], assets: ["site"] },
+  staff: { sites: ["manager"], assets: ["assignedTo"] },
+  inventory: { purchases: ["item"] }
+};
 
 const emptyDb = () => ({
   version: 4,
@@ -26,7 +34,9 @@ const state = {
   page: "dashboard",
   user: null,
   editId: null,
-  sort: { field: "", direction: 1 }
+  sort: { field: "", direction: 1 },
+  timesheetPeriod: new Date().toISOString().slice(0, 7),
+  timesheetDate: new Date().toISOString().slice(0, 10)
 };
 
 function loadDb() {
@@ -189,6 +199,7 @@ function renderPage() {
   else if (special === "contactLedger") $("#content").innerHTML = renderContactLedger();
   else if (special === "staffLedger") $("#content").innerHTML = renderStaffLedger();
   else if (special === "costAnalysis") $("#content").innerHTML = renderCostAnalysis();
+  else if (special === "timesheets") $("#content").innerHTML = renderTimesheets();
   else if (special === "settings") $("#content").innerHTML = renderSettings();
   else if (special === "audit") $("#content").innerHTML = renderAudit();
   else if (special === "users") $("#content").innerHTML = renderList(section, state.db.users);
@@ -342,6 +353,143 @@ function renderStaffLedger() {
   return reportTable(["Personel", "Görev", "Aylık Ücret", "Maaş Ödemesi", "Avans", "Kalan"], rows, "Maaş ve avans ödeme fişleri personel kartıyla ilişkilendirilir.");
 }
 
+function timesheetPeriodBounds(period) {
+  const [year, month] = period.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return { min: period + "-01", max: period + "-" + String(lastDay).padStart(2, "0") };
+}
+
+function timesheetOption(value, current, label = value) {
+  return `<option value="${value}" ${String(value) === String(current) ? "selected" : ""}>${label}</option>`;
+}
+
+function renderTimesheets() {
+  const period = state.timesheetPeriod;
+  const bounds = timesheetPeriodBounds(period);
+  if (!state.timesheetDate.startsWith(period)) state.timesheetDate = bounds.min;
+  const date = state.timesheetDate;
+  const staff = records("staff").filter(item => item.status !== "Ayrıldı");
+  const dayEntries = records("timesheets").filter(item => item.date === date);
+  const periodEntries = records("timesheets").filter(item => item.period === period || item.date?.startsWith(period));
+  const entryByStaff = new Map(dayEntries.map(item => [item.staffId, item]));
+  const dailyRows = staff.map(person => {
+    const entry = entryByStaff.get(person.id) || {};
+    const multiplier = entry.wageMultiplier ?? "0";
+    const dailyAmount = number(person.monthlySalary) / 30 * number(multiplier);
+    return `<tr data-staff-id="${person.id}">
+      <td><strong>${escapeHtml(person.name)}</strong><small class="cell-note">${escapeHtml(person.role || "—")}</small></td>
+      <td><select class="select compact" data-timesheet-status>
+        ${timesheetOption("", entry.status || "", "Seçilmedi")}
+        ${timesheetOption("Tam Gün", entry.status)}
+        ${timesheetOption("Yarım Gün", entry.status)}
+        ${timesheetOption("İzinli", entry.status)}
+      </select></td>
+      <td><select class="select compact" data-timesheet-wage>
+        ${timesheetOption("0", multiplier, "0 yevmiye")}
+        ${timesheetOption("0.5", multiplier, "0,5 yevmiye")}
+        ${timesheetOption("1", multiplier, "1 yevmiye")}
+        ${timesheetOption("1.5", multiplier, "1,5 yevmiye")}
+        ${timesheetOption("2", multiplier, "2 yevmiye")}
+      </select></td>
+      <td data-day-amount>${money.format(dailyAmount)}</td>
+      <td><input class="input compact" data-timesheet-note value="${escapeHtml(entry.note || "")}" placeholder="Açıklama"></td>
+    </tr>`;
+  }).join("");
+
+  const summaryRows = records("staff").map(person => {
+    const entries = periodEntries.filter(item => item.staffId === person.id);
+    if (!entries.length) return "";
+    const full = entries.filter(item => item.status === "Tam Gün").length;
+    const half = entries.filter(item => item.status === "Yarım Gün").length;
+    const leave = entries.filter(item => item.status === "İzinli").length;
+    const wages = entries.reduce((sum, item) => sum + number(item.wageMultiplier), 0);
+    const amount = number(person.monthlySalary) / 30 * wages;
+    return `<tr><td>${escapeHtml(person.name)}</td><td>${full}</td><td>${half}</td><td>${leave}</td><td>${wages.toLocaleString("tr-TR")}</td><td>${money.format(amount)}</td></tr>`;
+  }).filter(Boolean).join("");
+
+  return `
+    <div class="callout">Puantaj kayıtları tarih ve ay dönemine göre saklanır. Günlük çalışma durumu ile yevmiye çarpanı birbirinden bağımsızdır; tam çalışan personele gerektiğinde 2 yevmiye seçebilirsiniz.</div>
+    <div class="timesheet-toolbar panel">
+      <div class="field"><label for="timesheetPeriod">Dönem</label><input class="input" id="timesheetPeriod" type="month" value="${period}"></div>
+      <div class="field"><label for="timesheetDate">Puantaj günü</label><input class="input" id="timesheetDate" type="date" min="${bounds.min}" max="${bounds.max}" value="${date}"></div>
+      <div class="timesheet-actions">${canEdit() ? '<button class="btn gold" id="saveTimesheetDay">Günü Kaydet</button>' : ""}<button class="btn ghost" id="exportTimesheet">Dönem CSV</button></div>
+    </div>
+    <div class="table-wrap"><table class="table timesheet-table"><thead><tr><th>Personel</th><th>Çalışma</th><th>Yevmiye</th><th>Günlük Tutar</th><th>Açıklama</th></tr></thead><tbody id="timesheetRows">
+      ${dailyRows || `<tr><td colspan="5">${emptyMessage("Puantaj oluşturmak için önce aktif personel kaydı ekleyin.")}</td></tr>`}
+    </tbody></table></div>
+    <div class="panel timesheet-summary"><div class="panel-head"><h3>${escapeHtml(period)} Dönem Özeti</h3><span class="badge info">${periodEntries.length} günlük kayıt</span></div>
+      <div class="table-wrap embedded"><table class="table"><thead><tr><th>Personel</th><th>Tam Gün</th><th>Yarım Gün</th><th>İzinli</th><th>Yevmiye</th><th>Hesaplanan</th></tr></thead><tbody>${summaryRows || '<tr><td colspan="6" class="empty">Bu dönemde kayıt yok.</td></tr>'}</tbody></table></div>
+    </div>`;
+}
+
+function bindTimesheetPage() {
+  $("#timesheetPeriod")?.addEventListener("change", event => {
+    state.timesheetPeriod = event.target.value;
+    state.timesheetDate = event.target.value + "-01";
+    renderPage();
+  });
+  $("#timesheetDate")?.addEventListener("change", event => {
+    state.timesheetDate = event.target.value;
+    state.timesheetPeriod = event.target.value.slice(0, 7);
+    renderPage();
+  });
+  $$("#timesheetRows [data-timesheet-status]").forEach(select => select.addEventListener("change", event => {
+    const row = event.target.closest("tr");
+    const defaults = { "Tam Gün": "1", "Yarım Gün": "0.5", "İzinli": "0", "": "0" };
+    row.querySelector("[data-timesheet-wage]").value = defaults[event.target.value];
+    updateTimesheetRowAmount(row);
+  }));
+  $$("#timesheetRows [data-timesheet-wage]").forEach(select => select.addEventListener("change", event => updateTimesheetRowAmount(event.target.closest("tr"))));
+  $("#saveTimesheetDay")?.addEventListener("click", saveTimesheetDay);
+  $("#exportTimesheet")?.addEventListener("click", exportTimesheetCsv);
+}
+
+function updateTimesheetRowAmount(row) {
+  const person = records("staff").find(item => item.id === row.dataset.staffId);
+  const multiplier = number(row.querySelector("[data-timesheet-wage]").value);
+  row.querySelector("[data-day-amount]").textContent = money.format(number(person?.monthlySalary) / 30 * multiplier);
+}
+
+function saveTimesheetDay() {
+  const target = state.db.records.timesheets ||= [];
+  $$("#timesheetRows tr[data-staff-id]").forEach(row => {
+    const staffId = row.dataset.staffId;
+    const person = records("staff").find(item => item.id === staffId);
+    const status = row.querySelector("[data-timesheet-status]").value;
+    const existingIndex = target.findIndex(item => item.date === state.timesheetDate && item.staffId === staffId);
+    if (!status) {
+      if (existingIndex >= 0) target.splice(existingIndex, 1);
+      return;
+    }
+    const entry = {
+      id: existingIndex >= 0 ? target[existingIndex].id : uid(),
+      period: state.timesheetPeriod,
+      date: state.timesheetDate,
+      staffId,
+      staffName: person.name,
+      status,
+      wageMultiplier: row.querySelector("[data-timesheet-wage]").value,
+      note: row.querySelector("[data-timesheet-note]").value.trim(),
+      createdAt: existingIndex >= 0 ? target[existingIndex].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (existingIndex >= 0) target[existingIndex] = entry;
+    else target.push(entry);
+  });
+  audit("Puantaj günü kaydedildi", state.timesheetDate);
+  persist();
+  renderPage();
+  toast("Puantaj günü kaydedildi.");
+}
+
+function exportTimesheetCsv() {
+  const rows = records("timesheets").filter(item => item.period === state.timesheetPeriod || item.date?.startsWith(state.timesheetPeriod));
+  const csv = [["Dönem", "Tarih", "Personel", "Durum", "Yevmiye", "Açıklama"], ...rows.map(item => [item.period, item.date, item.staffName, item.status, item.wageMultiplier, item.note || ""])]
+    .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
+  downloadFile("yapi360-puantaj-" + state.timesheetPeriod + ".csv", "\ufeff" + csv, "text/csv");
+  toast("Puantaj dönem dosyası hazırlandı.");
+}
+
 function renderCostAnalysis() {
   const rows = records("projects").map(project => {
     const actual = records("purchases").filter(item => item.project === project.name).reduce((sum, item) => sum + number(item.amount), 0);
@@ -365,7 +513,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.1.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.2.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -389,6 +537,7 @@ function bindPage() {
   $$("[data-go]").forEach(button => button.addEventListener("click", () => navigate(button.dataset.go)));
   const section = window.YAPI360_SECTIONS[state.page];
   if (!section.fields) {
+    if (state.page === "timesheets") bindTimesheetPage();
     if (state.page === "settings") {
       $("#settingsForm")?.addEventListener("submit", saveSettings);
       $("#backupData")?.addEventListener("click", backupData);
@@ -416,6 +565,14 @@ function bindPage() {
 
 function fieldInput(field, value = "") {
   if (field.type === "select") return `<select class="select" id="field-${field.name}" name="${field.name}" required>${field.options.map(option => `<option ${option === value ? "selected" : ""}>${option}</option>`).join("")}</select>`;
+  if (field.type === "relation") {
+    const items = records(field.source);
+    const values = items.map(item => item.name);
+    const legacy = value && !values.includes(value) ? `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)} · eski kayıt</option>` : "";
+    const placeholder = field.optional ? '<option value="">Seçim yok</option>' : `<option value="" disabled ${value ? "" : "selected"}>Önce ilgili kaydı tanımlayın</option>`;
+    const options = items.map(item => `<option value="${escapeHtml(item.name)}" ${item.name === value ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("");
+    return `<select class="select" id="field-${field.name}" name="${field.name}" ${field.optional ? "" : "required"}>${placeholder}${legacy}${options}</select>`;
+  }
   const min = field.type === "number" ? ' min="0" step="0.01"' : "";
   const required = field.name === "password" && state.editId ? "" : " required";
   return `<input class="input" id="field-${field.name}" name="${field.name}" type="${field.type}" value="${escapeHtml(value)}"${min}${required}>`;
@@ -518,6 +675,59 @@ function openModal(id = null) {
   $("#recordModal").classList.add("open");
 }
 
+function updateNamedReferences(page, id, oldName, newName) {
+  const mapping = REFERENCE_FIELDS[page] || {};
+  Object.entries(mapping).forEach(([targetPage, fields]) => {
+    records(targetPage).forEach(item => {
+      let changed = false;
+      fields.forEach(field => {
+        if (item[field] === oldName) {
+          item[field] = newName;
+          changed = true;
+        }
+      });
+      if (changed) item.updatedAt = new Date().toISOString();
+    });
+  });
+  if (page === "contacts") {
+    records("cash").forEach(item => {
+      if (item.contactId === id || item.contactName === oldName) {
+        item.contactName = newName;
+        if (item.relatedName === oldName) item.relatedName = newName;
+        item.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+  if (page === "staff") {
+    records("timesheets").forEach(item => {
+      if (item.staffId === id) {
+        item.staffName = newName;
+        item.updatedAt = new Date().toISOString();
+      }
+    });
+    records("cash").forEach(item => {
+      if (item.staffId === id) {
+        item.staffName = newName;
+        if (item.relatedName === oldName) item.relatedName = newName;
+        item.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+}
+
+function referenceCount(page, row) {
+  const mapping = REFERENCE_FIELDS[page] || {};
+  let count = Object.entries(mapping).reduce((total, [targetPage, fields]) => total + records(targetPage).filter(item => fields.some(field => item[field] === row.name)).length, 0);
+  if (page === "contacts") count += records("cash").filter(item => item.contactId === row.id || item.contactName === row.name).length;
+  if (page === "staff") {
+    count += records("timesheets").filter(item => item.staffId === row.id).length;
+    count += records("cash").filter(item => item.staffId === row.id).length;
+  }
+  if (["purchases", "sales"].includes(page)) count += records("cash").filter(item => item.sourceRecordId === row.id).length;
+  if (page === "checks") count += records("cash").filter(item => item.instrumentId === row.id || item.createdInstrumentId === row.id).length;
+  return count;
+}
+
 async function saveRecord(event) {
   event.preventDefault();
   const section = window.YAPI360_SECTIONS[state.page];
@@ -526,6 +736,10 @@ async function saveRecord(event) {
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
+
+  if (UNIQUE_NAME_PAGES.has(state.page) && data.name && target.some(item => item.name.toLocaleLowerCase("tr") === data.name.toLocaleLowerCase("tr") && item.id !== state.editId)) {
+    return toast("Bu adla daha önce bir kayıt oluşturulmuş.");
+  }
 
   if (state.page === "users") {
     data.email = data.email.toLocaleLowerCase("tr");
@@ -536,6 +750,8 @@ async function saveRecord(event) {
 
   if (row) {
     const passwordHash = row.passwordHash;
+    const previousName = row.name;
+    if (previousName && data.name && previousName !== data.name) updateNamedReferences(state.page, row.id, previousName, data.name);
     Object.assign(row, data, { updatedAt: new Date().toISOString() });
     if (state.page === "users" && !data.passwordHash) row.passwordHash = passwordHash;
     audit("Kayıt güncellendi", section.title + " · " + recordName(row));
@@ -680,11 +896,13 @@ function recordName(row) {
 }
 
 function deleteRecord(id) {
-  if (!confirm("Bu kaydı kalıcı olarak silmek istediğinize emin misiniz?")) return;
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   const index = target.findIndex(item => item.id === id);
   if (index < 0) return;
   if (state.page === "users" && target[index].id === state.user.id) return toast("Aktif kullanıcı kendi hesabını silemez.");
+  const references = referenceCount(state.page, target[index]);
+  if (references) return toast(`Bu kayıt ${references} işlemde kullanıldığı için silinemez.`);
+  if (!confirm("Bu kaydı kalıcı olarak silmek istediğinize emin misiniz?")) return;
   if (state.page === "cash") reverseCashMovement(target[index]);
   const [removed] = target.splice(index, 1);
   audit("Kayıt silindi", window.YAPI360_SECTIONS[state.page].title + " · " + recordName(removed));
@@ -797,7 +1015,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.1.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.2.0", { updateViaCache: "none" });
     registration.update();
   });
 }
