@@ -34,6 +34,8 @@
 - Kasa/banka seçimi → ödeme, tahsilat, maaş ve avans hareketleri yalnızca seçilen nakit kasa veya banka hesabının bakiyesini etkiler
 - Kendi çekimizle ödeme → portföy çeki yoksa çek no, firma banka hesabı ve vade girilerek verilen çek oluşturulur; cari ödeme gerçekleşir ve belge “Kendi Çekimiz” olarak raporlanır
 - Yönetim paneli → planlanan proje maliyeti, aktif sözleşmeler, onaylı hakedişler, stok değeri, kasa, banka, cari alacak ve açık çek/senet toplamları
+- Cari ekstre → cari ve tarih aralığı seçimi, devreden/dönem/kapanış bakiyesi, yazdırma-PDF ve Excel uyumlu CSV
+- Borç / alacak raporu → borçlu ve alacaklı cariler, ayrı toplamlar ve net dip toplam farkı
 - Günlük puantaj → tarihte geçerli görevlendirmeden proje/şantiye seçimi + tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı
 - Ana depo sevki → proje + projeye bağlı şantiye + sevk eden personel + stok düşümü

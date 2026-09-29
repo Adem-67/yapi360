@@ -46,6 +46,8 @@ const state = {
   contractDraft: null,
   progressDraft: null,
   sort: { field: "", direction: 1 },
+  contactLedgerView: "statement",
+  contactLedger: { contactId: "", startDate: "", endDate: "" },
   timesheetPeriod: new Date().toISOString().slice(0, 7),
   timesheetDate: new Date().toISOString().slice(0, 10)
 };
@@ -453,8 +455,189 @@ function contactSummary() {
 }
 
 function renderContactLedger() {
-  const rows = contactSummary();
-  return reportTable(["Cari", "Satış / Borç", "Tahsilat", "Alış / Alacak", "Net Bakiye"], rows.map(row => [row.name, money.format(row.sales), money.format(row.collected), money.format(row.purchases), money.format(row.balance)]), "Alış ve satış kayıtları cariye göre otomatik birleştirilir.");
+  const contacts = records("contacts");
+  const selected = contacts.find(item => item.id === state.contactLedger.contactId);
+  const tabs = `<div class="report-tabs" role="tablist" aria-label="Cari hesap raporları"><button class="report-tab ${state.contactLedgerView === "statement" ? "active" : ""}" data-ledger-view="statement" role="tab" aria-selected="${state.contactLedgerView === "statement"}">Cari Ekstre</button><button class="report-tab ${state.contactLedgerView === "balances" ? "active" : ""}" data-ledger-view="balances" role="tab" aria-selected="${state.contactLedgerView === "balances"}">Borç / Alacak Raporu</button></div>`;
+  if (state.contactLedgerView === "balances") return tabs + renderContactBalanceReport();
+  const filter = `
+    <section class="panel ledger-filter-panel">
+      <div class="ledger-filter-head"><div><h3>Cari Ekstre Filtresi</h3><p>Cariyi ve tarih aralığını seçtiğinizde hareketler otomatik hazırlanır.</p></div>${selected ? '<button class="btn ghost small" id="clearContactLedger" type="button">Filtreyi Temizle</button>' : ""}</div>
+      <div class="ledger-filter-grid">
+        <div class="field"><label for="contactLedgerContact">Cari</label><select class="select" id="contactLedgerContact"><option value="">Cari seçin</option>${contacts.map(item => `<option value="${item.id}" ${item.id === state.contactLedger.contactId ? "selected" : ""}>${escapeHtml(item.name)} · ${escapeHtml(item.type)}</option>`).join("")}</select></div>
+        <div class="field"><label for="contactLedgerStart">Başlangıç tarihi</label><input class="input" id="contactLedgerStart" type="date" value="${escapeHtml(state.contactLedger.startDate)}"></div>
+        <div class="field"><label for="contactLedgerEnd">Bitiş tarihi</label><input class="input" id="contactLedgerEnd" type="date" value="${escapeHtml(state.contactLedger.endDate)}"></div>
+        <div class="ledger-filter-action">${selected ? '<button class="btn" id="printContactLedger" type="button">Yazdır / PDF Kaydet</button><button class="btn ghost" id="exportContactLedger" type="button">Excel Uyumlu CSV</button>' : ""}</div>
+      </div>
+    </section>`;
+
+  if (!selected) {
+    const rows = contactSummary();
+    return tabs + filter + `<div class="callout">Detaylı hareket ekstresi için yukarıdan bir cari seçin. Aşağıdaki tablo tüm carilerin genel bakiyesini gösterir.</div><div class="table-wrap"><table class="table"><thead><tr><th>Cari</th><th>Satış / Borç</th><th>Tahsilat</th><th>Alış / Alacak</th><th>Net Bakiye</th><th>İşlem</th></tr></thead><tbody>${rows.length ? rows.map(row => {
+      const contact = contacts.find(item => item.name === row.name);
+      return `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(money.format(row.sales))}</td><td>${escapeHtml(money.format(row.collected))}</td><td>${escapeHtml(money.format(row.purchases))}</td><td>${escapeHtml(ledgerBalanceText(row.balance))}</td><td>${contact ? `<button class="btn ghost small" data-ledger-contact="${contact.id}">Ekstreyi Aç</button>` : "—"}</td></tr>`;
+    }).join("") : `<tr><td colspan="6">${emptyMessage("Rapor için önce cari kaydı oluşturun.")}</td></tr>`}</tbody></table></div>`;
+  }
+
+  if (state.contactLedger.startDate && state.contactLedger.endDate && state.contactLedger.startDate > state.contactLedger.endDate) {
+    return tabs + filter + '<div class="callout ledger-error">Başlangıç tarihi bitiş tarihinden sonra olamaz.</div>';
+  }
+
+  return tabs + filter + renderContactLedgerStatement(selected);
+}
+
+function renderContactBalanceReport() {
+  const rows = records("contacts").map(contact => ({
+    id: contact.id,
+    name: contact.name,
+    type: contact.type,
+    balance: contactLedgerEntries(contact).reduce((balance, item) => balance + item.debit - item.credit, number(contact.openingBalance))
+  })).filter(item => number(item.balance) !== 0).sort((a, b) => Math.abs(number(b.balance)) - Math.abs(number(a.balance)));
+  const totalDebtors = rows.reduce((sum, item) => sum + Math.max(0, number(item.balance)), 0);
+  const totalCreditors = rows.reduce((sum, item) => sum + Math.max(0, -number(item.balance)), 0);
+  const difference = totalDebtors - totalCreditors;
+  return `
+    <div class="ledger-title"><div><span class="eyebrow">CARİ BAKİYE RAPORU</span><h3>Borçlu ve Alacaklı Cariler</h3><p>Güncel cari bakiyeler ve toplam fark</p></div><span class="badge">${rows.length} bakiyeli cari</span></div>
+    <div class="ledger-metrics balance-metrics">
+      <article><small>BORÇLU CARİLER TOPLAMI</small><strong class="metric-negative">${escapeHtml(money.format(totalDebtors))}</strong></article>
+      <article><small>ALACAKLI CARİLER TOPLAMI</small><strong class="metric-positive">${escapeHtml(money.format(totalCreditors))}</strong></article>
+      <article><small>NET FARK</small><strong>${escapeHtml(ledgerBalanceText(difference))}</strong></article>
+    </div>
+    <div class="callout">Borçlu cari firmanın tahsil edeceği tutarı, alacaklı cari ise firmanın ödeyeceği tutarı gösterir.</div>
+    <div class="table-wrap"><table class="table balance-report-table"><thead><tr><th>Cari</th><th>Cari Türü</th><th>Durum</th><th>Borç Bakiyesi</th><th>Alacak Bakiyesi</th><th>İşlem</th></tr></thead><tbody>
+      ${rows.length ? rows.map(row => {
+        const balance = number(row.balance);
+        return `<tr><td><strong>${escapeHtml(row.name)}</strong></td><td>${escapeHtml(row.type || "—")}</td><td><span class="badge ${balance > 0 ? "danger" : ""}">${balance > 0 ? "Borçlu" : "Alacaklı"}</span></td><td>${balance > 0 ? escapeHtml(money.format(balance)) : "—"}</td><td>${balance < 0 ? escapeHtml(money.format(Math.abs(balance))) : "—"}</td><td><button class="btn ghost small" data-ledger-contact="${row.id}">Ekstreyi Aç</button></td></tr>`;
+      }).join("") : `<tr><td colspan="6">${emptyMessage("Borç veya alacak bakiyesi bulunan cari yok.")}</td></tr>`}
+    </tbody><tfoot><tr><th colspan="3">DİP TOPLAM</th><th>${escapeHtml(money.format(totalDebtors))}</th><th>${escapeHtml(money.format(totalCreditors))}</th><th>${escapeHtml(ledgerBalanceText(difference))}</th></tr></tfoot></table></div>`;
+}
+
+function ledgerRecordDate(row) {
+  const value = row.date || row.approvedAt || row.createdAt || row.updatedAt || "";
+  const match = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : "";
+}
+
+function contactLedgerEntries(contact) {
+  const entries = [];
+  const add = (row, type, reference, description, debit = 0, credit = 0, order = 10) => entries.push({
+    id: row.id || uid(), date: ledgerRecordDate(row), type, reference: reference || "—", description: description || "—",
+    debit: number(debit), credit: number(credit), order
+  });
+  const sameContact = name => name === contact.name;
+  const cashForContact = records("cash").filter(item => item.contactId === contact.id || sameContact(item.contactName));
+
+  records("sales").filter(item => sameContact(item.customer)).forEach(item => {
+    add(item, "Satış", "SATIŞ", [item.project, item.unit].filter(Boolean).join(" · "), item.total, 0, 10);
+    const linked = cashForContact.filter(movement => movement.sourceRecordId === item.id && ["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(movement.transactionType)).reduce((sum, movement) => sum + number(movement.amount), 0);
+    const directCollection = Math.max(0, number(item.collected) - linked);
+    if (directCollection) add({ ...item, id: "sale-collection-" + item.id }, "Satış Tahsilatı", "SATIŞ", item.unit || item.project, 0, directCollection, 20);
+  });
+
+  records("purchases").filter(item => sameContact(item.supplier)).forEach(item => {
+    add(item, "Alış", "ALIŞ", [item.item, item.project].filter(Boolean).join(" · "), 0, item.amount, 10);
+    const linked = cashForContact.filter(movement => movement.sourceRecordId === item.id && ["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(movement.transactionType)).reduce((sum, movement) => sum + number(movement.amount), 0);
+    const recordedPaid = number(item.paidAmount) || (item.paymentStatus === "Ödendi" ? number(item.amount) : 0);
+    const directPayment = Math.max(0, recordedPaid - linked);
+    if (directPayment) add({ ...item, id: "purchase-payment-" + item.id }, "Alış Ödemesi", "ALIŞ", item.item || item.project, directPayment, 0, 20);
+  });
+
+  records("progress").filter(item => sameContact(item.subcontractor) && ["Onaylandı", "Ödendi"].includes(item.status)).forEach(item => {
+    add(item, "Onaylı Hakediş", item.number, item.project, 0, item.amount, 10);
+  });
+
+  cashForContact.forEach(item => {
+    const type = item.transactionType || (item.type === "Gelir" ? "Tahsilat" : "Ödeme");
+    const amount = number(item.amount);
+    const debit = ["Ödeme", "Çek Ödeme", "Senet Ödeme", "Borç Dekontu"].includes(type) ? amount : 0;
+    const credit = ["Tahsilat", "Çek Tahsilat", "Senet Tahsilat", "Alacak Dekontu"].includes(type) ? amount : 0;
+    if (!debit && !credit) return;
+    add(item, type, item.referenceNo, [item.description, item.accountName].filter(Boolean).join(" · "), debit, credit, 30);
+  });
+
+  return entries.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.id.localeCompare(b.id));
+}
+
+function ledgerBalanceText(balance) {
+  const amount = number(balance);
+  if (!amount) return money.format(0);
+  return `${money.format(Math.abs(amount))} ${amount > 0 ? "Borç" : "Alacak"}`;
+}
+
+function contactLedgerStatement(contact) {
+  const allEntries = contactLedgerEntries(contact);
+  const startDate = state.contactLedger.startDate;
+  const endDate = state.contactLedger.endDate;
+  const opening = allEntries.filter(item => startDate && item.date && item.date < startDate).reduce((balance, item) => balance + item.debit - item.credit, number(contact.openingBalance));
+  const entries = allEntries.filter(item => (!startDate || !item.date || item.date >= startDate) && (!endDate || !item.date || item.date <= endDate));
+  let running = opening;
+  return {
+    opening,
+    entries: entries.map(item => ({ ...item, balance: running += item.debit - item.credit })),
+    debit: entries.reduce((sum, item) => sum + item.debit, 0),
+    credit: entries.reduce((sum, item) => sum + item.credit, 0)
+  };
+}
+
+function renderContactLedgerStatement(contact) {
+  const statement = contactLedgerStatement(contact);
+  const closing = statement.opening + statement.debit - statement.credit;
+  const period = state.contactLedger.startDate || state.contactLedger.endDate
+    ? `${state.contactLedger.startDate ? formatDate(state.contactLedger.startDate) : "İlk kayıt"} – ${state.contactLedger.endDate ? formatDate(state.contactLedger.endDate) : "Bugün"}`
+    : "Tüm tarihler";
+  return `
+    <section class="ledger-print-area">
+      <div class="ledger-print-brand"><strong>Yapı360</strong><span>${escapeHtml(state.db.company?.name || "")}</span></div>
+      <div class="ledger-title"><div><span class="eyebrow">CARİ EKSTRE</span><h3>${escapeHtml(contact.name)}</h3><p>${escapeHtml(contact.type)} · ${escapeHtml(period)}</p></div><span class="badge">${statement.entries.length} hareket</span></div>
+      <div class="ledger-metrics">
+        <article><small>DEVREDEN BAKİYE</small><strong>${escapeHtml(ledgerBalanceText(statement.opening))}</strong></article>
+        <article><small>DÖNEM BORÇ</small><strong>${escapeHtml(money.format(statement.debit))}</strong></article>
+        <article><small>DÖNEM ALACAK</small><strong>${escapeHtml(money.format(statement.credit))}</strong></article>
+        <article><small>KAPANIŞ BAKİYESİ</small><strong class="${closing > 0 ? "metric-negative" : closing < 0 ? "metric-positive" : ""}">${escapeHtml(ledgerBalanceText(closing))}</strong></article>
+      </div>
+      <div class="callout ledger-explanation">Borç sütunu satışları ve cariye yapılan ödemeleri; alacak sütunu alış, onaylı hakediş ve cariden yapılan tahsilatları gösterir.</div>
+      <div class="table-wrap"><table class="table ledger-table"><thead><tr><th>Tarih</th><th>İşlem</th><th>Belge / Referans</th><th>Açıklama</th><th>Borç</th><th>Alacak</th><th>Bakiye</th></tr></thead><tbody>
+        ${state.contactLedger.startDate || number(contact.openingBalance) ? `<tr class="ledger-opening"><td>${state.contactLedger.startDate ? escapeHtml(formatDate(state.contactLedger.startDate)) : "—"}</td><td>Devreden Bakiye</td><td>—</td><td>Dönem başlangıcı</td><td>—</td><td>—</td><td>${escapeHtml(ledgerBalanceText(statement.opening))}</td></tr>` : ""}
+        ${statement.entries.length ? statement.entries.map(item => `<tr><td>${item.date ? escapeHtml(formatDate(item.date)) : "—"}</td><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.reference)}</td><td>${escapeHtml(item.description)}</td><td>${item.debit ? escapeHtml(money.format(item.debit)) : "—"}</td><td>${item.credit ? escapeHtml(money.format(item.credit)) : "—"}</td><td>${escapeHtml(ledgerBalanceText(item.balance))}</td></tr>`).join("") : `<tr><td colspan="7">${emptyMessage("Seçilen tarih aralığında hareket bulunamadı.")}</td></tr>`}
+      </tbody></table></div>
+      <div class="ledger-print-footer">${escapeHtml(state.db.company?.name || "Yapı360")} · ${escapeHtml(new Date().toLocaleString("tr-TR"))}</div>
+    </section>`;
+}
+
+function bindContactLedgerPage() {
+  const update = () => {
+    state.contactLedger = {
+      contactId: $("#contactLedgerContact")?.value || "",
+      startDate: $("#contactLedgerStart")?.value || "",
+      endDate: $("#contactLedgerEnd")?.value || ""
+    };
+    renderPage();
+  };
+  $("#contactLedgerContact")?.addEventListener("change", update);
+  $("#contactLedgerStart")?.addEventListener("change", update);
+  $("#contactLedgerEnd")?.addEventListener("change", update);
+  $("#clearContactLedger")?.addEventListener("click", () => { state.contactLedger = { contactId: "", startDate: "", endDate: "" }; renderPage(); });
+  $("#exportContactLedger")?.addEventListener("click", exportContactLedgerCsv);
+  $("#printContactLedger")?.addEventListener("click", () => window.print());
+  $$('[data-ledger-view]').forEach(button => button.addEventListener("click", () => { state.contactLedgerView = button.dataset.ledgerView; renderPage(); }));
+  $$('[data-ledger-contact]').forEach(button => button.addEventListener("click", () => { state.contactLedgerView = "statement"; state.contactLedger.contactId = button.dataset.ledgerContact; renderPage(); }));
+}
+
+function exportContactLedgerCsv() {
+  const contact = records("contacts").find(item => item.id === state.contactLedger.contactId);
+  if (!contact) return toast("Önce bir cari seçin.");
+  const statement = contactLedgerStatement(contact);
+  const rows = [
+    ["Cari", contact.name],
+    ["Başlangıç", state.contactLedger.startDate || "İlk kayıt", "Bitiş", state.contactLedger.endDate || "Bugün"],
+    ["Devreden bakiye", ledgerBalanceText(statement.opening)],
+    [],
+    ["Tarih", "İşlem", "Belge / Referans", "Açıklama", "Borç", "Alacak", "Bakiye"],
+    ...statement.entries.map(item => [item.date, item.type, item.reference, item.description, item.debit || "", item.credit || "", item.balance])
+  ];
+  const csv = rows.map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(";")).join("\n");
+  const safeName = contact.name.toLocaleLowerCase("tr").replace(/[^a-z0-9çğıöşü]+/gi, "-").replace(/^-|-$/g, "");
+  downloadFile(`yapi360-cari-ekstre-${safeName || "cari"}.csv`, "\ufeff" + csv, "text/csv;charset=utf-8");
+  toast("Cari ekstresi Excel uyumlu CSV olarak hazırlandı.");
 }
 
 function renderStaffLedger() {
@@ -692,7 +875,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.11.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.12.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -716,6 +899,7 @@ function bindPage() {
   $$("[data-go]").forEach(button => button.addEventListener("click", () => navigate(button.dataset.go)));
   const section = window.YAPI360_SECTIONS[state.page];
   if (!section.fields) {
+    if (state.page === "contact_ledger") bindContactLedgerPage();
     if (state.page === "timesheets") bindTimesheetPage();
     if (state.page === "settings") {
       $("#settingsForm")?.addEventListener("submit", saveSettings);
@@ -2189,7 +2373,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.11.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.12.0", { updateViaCache: "none" });
     registration.update();
   });
 }
