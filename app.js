@@ -12,7 +12,7 @@ const CONTACT_TYPES = new Set(["Ödeme", "Tahsilat", "Borç Dekontu", "Alacak De
 const STAFF_TYPES = new Set(["Maaş Ödeme", "Avans Ödeme"]);
 const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"]);
 const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
-const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "contracts", "sites", "staff", "inventory"]);
+const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "contracts", "sites", "staff", "inventory", "bank_accounts"]);
 const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
 const MAX_STAFF_DOCUMENT_BYTES = 1500000;
 const MAX_STAFF_DOCUMENT_TOTAL_BYTES = 2500000;
@@ -23,7 +23,8 @@ const REFERENCE_FIELDS = {
   staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"] },
   contracts: { subcontractors: ["contract"] },
   inventory: { purchases: ["item"], warehouse: ["itemName"] },
-  subcontractors: { warehouse: ["subcontractor"] }
+  subcontractors: { warehouse: ["subcontractor"] },
+  bank_accounts: { cash: ["accountName"] }
 };
 
 const emptyDb = () => ({
@@ -216,39 +217,61 @@ function renderPage() {
   else if (special === "settings") $("#content").innerHTML = renderSettings();
   else if (special === "audit") $("#content").innerHTML = renderAudit();
   else if (special === "users") $("#content").innerHTML = renderList(section, state.db.users);
-  else $("#content").innerHTML = renderList(section, records(state.page));
+  else $("#content").innerHTML = renderList(section, state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page));
   bindPage();
 }
 
 function derivedCash() {
-  const manual = records("cash").map(item => ({
-    ...item,
-    transactionType: item.transactionType || (item.type === "Gelir" ? "Tahsilat" : "Ödeme"),
-    relatedName: item.relatedName || item.category || "Geçmiş kayıt",
-    referenceNo: item.referenceNo || "ESKİ KAYIT",
-    direction: item.direction || (item.type === "Gelir" ? "in" : "out"),
-    affectsCash: item.affectsCash ?? true,
-    source: "İşlem"
-  }));
+  const manual = records("cash").map(item => {
+    const affectsCash = item.affectsCash ?? true;
+    const bank = records("bank_accounts").find(account => account.id === item.bankAccountId);
+    const accountType = item.accountType || (affectsCash ? item.bankAccountId ? "bank" : "cash" : "none");
+    return {
+      ...item,
+      transactionType: item.transactionType || (item.type === "Gelir" ? "Tahsilat" : "Ödeme"),
+      relatedName: item.relatedName || item.category || "Geçmiş kayıt",
+      accountType,
+      accountName: item.accountName || (accountType === "bank" ? bank?.name || "Banka hesabı" : accountType === "cash" ? "Nakit Kasa" : "Nakit dışı işlem"),
+      referenceNo: item.referenceNo || "ESKİ KAYIT",
+      direction: item.direction || (item.type === "Gelir" ? "in" : "out"),
+      affectsCash,
+      source: "İşlem"
+    };
+  });
   const purchases = records("purchases")
     .filter(item => item.paymentStatus === "Ödendi" && !records("cash").some(movement => movement.sourceRecordId === item.id))
-    .map(item => ({ id: "purchase-" + item.id, date: item.date, transactionType: "Ödeme", relatedName: item.supplier, referenceNo: "ALIŞ", description: item.item, amount: item.amount, direction: "out", affectsCash: true, source: "Alış", automatic: true }));
+    .map(item => ({ id: "purchase-" + item.id, date: item.date, transactionType: "Ödeme", relatedName: item.supplier, accountType: "cash", accountName: "Nakit Kasa", referenceNo: "ALIŞ", description: item.item, amount: item.amount, direction: "out", affectsCash: true, source: "Alış", automatic: true }));
   const sales = records("sales").map(item => {
     const linked = records("cash").filter(movement => movement.sourceRecordId === item.id && ["Tahsilat", "Çek Tahsilat", "Senet Tahsilat"].includes(movement.transactionType)).reduce((sum, movement) => sum + number(movement.amount), 0);
     return { item, residual: Math.max(0, number(item.collected) - linked) };
   })
     .filter(entry => entry.residual > 0)
-    .map(entry => ({ id: "sale-" + entry.item.id, date: entry.item.date, transactionType: "Tahsilat", relatedName: entry.item.customer, referenceNo: "SATIŞ", description: entry.item.unit, amount: entry.residual, direction: "in", affectsCash: true, source: "Satış", automatic: true }));
+    .map(entry => ({ id: "sale-" + entry.item.id, date: entry.item.date, transactionType: "Tahsilat", relatedName: entry.item.customer, accountType: "cash", accountName: "Nakit Kasa", referenceNo: "SATIŞ", description: entry.item.unit, amount: entry.residual, direction: "in", affectsCash: true, source: "Satış", automatic: true }));
   return [...manual, ...purchases, ...sales].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 function totals() {
-  const cash = derivedCash().filter(item => item.affectsCash !== false);
+  const cash = derivedCash().filter(item => item.affectsCash !== false && item.accountType !== "bank");
   const income = cash.filter(item => item.direction === "in").reduce((sum, item) => sum + number(item.amount), 0);
   const expense = cash.filter(item => item.direction === "out").reduce((sum, item) => sum + number(item.amount), 0);
   const salesTotal = records("sales").reduce((sum, item) => sum + number(item.total), 0);
   const collected = records("sales").reduce((sum, item) => sum + number(item.collected), 0);
   return { income, expense, balance: income - expense, salesTotal, collected };
+}
+
+function bankAccountBalance(accountId) {
+  const account = records("bank_accounts").find(item => item.id === accountId);
+  if (!account) return 0;
+  return derivedCash().filter(item => item.affectsCash !== false && item.accountType === "bank" && item.bankAccountId === accountId)
+    .reduce((balance, item) => balance + (item.direction === "in" ? number(item.amount) : item.direction === "out" ? -number(item.amount) : 0), number(account.openingBalance));
+}
+
+function bankAccountsWithBalances() {
+  return records("bank_accounts").map(item => ({ ...item, currentBalance: bankAccountBalance(item.id) }));
+}
+
+function totalBankBalance() {
+  return bankAccountsWithBalances().reduce((sum, item) => sum + number(item.currentBalance), 0);
 }
 
 function dashboardMetrics() {
@@ -285,6 +308,7 @@ function dashboardMetrics() {
     totalProgress,
     stockValue,
     cashBalance: cash.balance,
+    bankBalance: totalBankBalance(),
     receivableBalance,
     payableInstruments,
     receivableInstruments,
@@ -305,6 +329,7 @@ function renderDashboard() {
       <article class="stat"><small>TOPLAM HAKEDİŞ</small><strong>${money.format(metrics.totalProgress)}</strong><em>${metrics.approvedProgressCount} onaylı hakediş</em></article>
       <article class="stat"><small>MEVCUT STOK DEĞERİ</small><strong>${money.format(metrics.stockValue)}</strong><em>Ortalama alış maliyetiyle</em></article>
       <article class="stat"><small>KASA BAKİYESİ</small><strong class="${metrics.cashBalance >= 0 ? "metric-positive" : "metric-negative"}">${money.format(metrics.cashBalance)}</strong><em>${metrics.cashBalance >= 0 ? "Pozitif nakit" : "Nakit açığı"}</em></article>
+      <article class="stat"><small>BANKA BAKİYESİ</small><strong class="${metrics.bankBalance >= 0 ? "metric-positive" : "metric-negative"}">${money.format(metrics.bankBalance)}</strong><em>${records("bank_accounts").filter(item => item.status === "Aktif").length} aktif hesap</em></article>
       <article class="stat"><small>ALACAK BAKİYESİ</small><strong>${money.format(metrics.receivableBalance)}</strong><em>Müşteri ve cari alacakları</em></article>
       <article class="stat"><small>ÖDENECEK ÇEK / SENET</small><strong class="${metrics.payableInstruments ? "metric-negative" : ""}">${money.format(metrics.payableInstruments)}</strong><em>Açık verilen belgeler</em></article>
       <article class="stat"><small>TAHSİL EDİLECEK ÇEK / SENET</small><strong>${money.format(metrics.receivableInstruments)}</strong><em>Açık alınan belgeler</em></article>
@@ -326,11 +351,15 @@ function tableFields(section) {
   return (section.fields || []).filter(field => field.table !== false);
 }
 
+function formFields(section) {
+  return (section.fields || []).filter(field => field.form !== false);
+}
+
 function renderList(section, sourceRows) {
   const rows = state.page === "cash" ? derivedCash() : sourceRows;
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
-    ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
+    ${state.page === "cash" ? '<div class="callout">Ödeme, tahsilat, maaş ve avans hareketlerinde Nakit Kasa veya aktif banka hesabı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak kasa/banka bakiyesini değiştirmez.</div>' : ""}
     ${state.page === "progress" ? '<div class="callout">Onaylanan hakediş taşeron carinin alacağına ve firma borcuna yansır. Hakediş ödemesini Kasa & Finans Hareketleri üzerinden aynı cariye “Ödeme” olarak kaydedin.</div>' : ""}
     ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
@@ -359,7 +388,7 @@ function renderWarehouseStockOverview() {
 function renderRows(query = "") {
   const section = window.YAPI360_SECTIONS[state.page];
   const fields = tableFields(section);
-  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : records(state.page);
+  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page);
   let rows = source.filter(row => fields.some(field => String(row[field.name] ?? "").toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))));
   if (state.sort.field) rows = [...rows].sort((a, b) => String(a[state.sort.field] ?? "").localeCompare(String(b[state.sort.field] ?? ""), "tr", { numeric: true }) * state.sort.direction);
   $("#tableBody").innerHTML = rows.length ? rows.map(row => `
@@ -397,7 +426,7 @@ function formatCell(field, value, row) {
 }
 
 function moneyField(name) {
-  return ["budget", "contractAmount", "paid", "paidAmount", "amount", "total", "collected", "openingBalance", "monthlySalary"].includes(name);
+  return ["budget", "contractAmount", "paid", "paidAmount", "amount", "total", "collected", "openingBalance", "currentBalance", "monthlySalary"].includes(name);
 }
 
 function contactSummary() {
@@ -663,7 +692,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.10.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.11.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -766,6 +795,25 @@ function cashSourceLabel(item, payment) {
   return `${item.customer} · ${item.unit} · Kalan ${money.format(number(item.total) - number(item.collected))}`;
 }
 
+function cashAccountField(transactionType, row = {}) {
+  if (!CASH_IN.has(transactionType) && !CASH_OUT.has(transactionType)) return "";
+  const accounts = records("bank_accounts").filter(item => item.status === "Aktif" || item.id === row.bankAccountId);
+  const selected = row.accountType === "bank" && row.bankAccountId ? `bank:${row.bankAccountId}` : "cash";
+  return `<div class="field"><label for="field-settlementAccount">Kasa / banka hesabı</label><select class="select" id="field-settlementAccount" name="settlementAccount" required><option value="cash" ${selected === "cash" ? "selected" : ""}>Nakit Kasa</option>${accounts.map(item => `<option value="bank:${item.id}" ${selected === `bank:${item.id}` ? "selected" : ""}>${escapeHtml(item.name)} · ${escapeHtml(item.bank)}</option>`).join("")}</select><small class="field-note">Hareket yalnızca seçilen hesabın bakiyesini etkiler.</small></div>`;
+}
+
+function paymentInstrumentDetails(transactionType, mode = "portfolio", row = {}) {
+  if (transactionType === "Çek Ödeme" && mode === "own") {
+    const accounts = records("bank_accounts").filter(item => item.status === "Aktif" || item.id === row.ownBankAccountId);
+    return `
+      <div class="field"><label for="field-instrumentNumber">Çek no</label><input class="input" id="field-instrumentNumber" name="instrumentNumber" value="${escapeHtml(row.instrumentNumber || "")}" required></div>
+      <div class="field"><label for="field-ownBankAccountId">Çekin banka hesabı</label><select class="select" id="field-ownBankAccountId" name="ownBankAccountId" required>${optionList(accounts, row.ownBankAccountId, item => item.name + " · " + item.bank + " · " + item.iban, "Önce aktif banka hesabı tanımlayın")}</select></div>
+      <div class="field"><label for="field-dueDate">Vade tarihi</label><input class="input" id="field-dueDate" name="dueDate" type="date" value="${escapeHtml(row.dueDate || "")}" required></div>`;
+  }
+  const instruments = eligibleInstruments(transactionType);
+  return `<div class="field"><label for="field-instrumentId">Portföy kaydı</label><select class="select" id="field-instrumentId" name="instrumentId" required>${optionList(instruments, row.instrumentId, item => item.number + " · " + item.party + " · " + money.format(number(item.amount)) + " · " + item.status, "Uygun çek/senet kaydı yok")}</select></div>`;
+}
+
 function cashRelationFields(transactionType, row = {}) {
   const contacts = records("contacts");
   const staff = records("staff");
@@ -779,6 +827,7 @@ function cashRelationFields(transactionType, row = {}) {
   if (STAFF_TYPES.has(transactionType)) {
     html += `<div class="field"><label for="field-staffId">Personel kayıt</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, row.staffId, item => item.name + " · " + item.role, "Önce personel tanımlayın")}</select></div>`;
   }
+  html += cashAccountField(transactionType, row);
   if (["Ödeme", "Tahsilat", "Çek Tahsilat", "Çek Ödeme", "Senet Tahsilat", "Senet Ödeme"].includes(transactionType)) {
     const payment = ["Ödeme", "Çek Ödeme", "Senet Ödeme"].includes(transactionType);
     html += `<div class="field"><label for="field-sourceRecordId">Bağlı ${payment ? "alış / hakediş" : "satış"} kaydı</label><select class="select" id="field-sourceRecordId" name="sourceRecordId">${optionList(sources, row.sourceRecordId, item => cashSourceLabel(item, payment), selectedContact ? "Bağlamadan kaydet" : "Önce cari seçin", true)}</select></div>`;
@@ -790,8 +839,12 @@ function cashRelationFields(transactionType, row = {}) {
       <div class="field"><label for="field-dueDate">Vade tarihi</label><input class="input" id="field-dueDate" name="dueDate" type="date" value="${escapeHtml(row.dueDate || "")}" required></div>`;
   }
   if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
-    const instruments = eligibleInstruments(transactionType);
-    html += `<div class="field"><label for="field-instrumentId">Portföy kaydı</label><select class="select" id="field-instrumentId" name="instrumentId" required>${optionList(instruments, row.instrumentId, item => item.number + " · " + item.party + " · " + money.format(number(item.amount)) + " · " + item.status, "Uygun çek/senet kaydı yok")}</select></div>`;
+    if (transactionType === "Çek Ödeme") {
+      const mode = row.instrumentMode || (eligibleInstruments(transactionType).length ? "portfolio" : "own");
+      html += `<div class="field"><label for="field-instrumentMode">Çek ödeme yöntemi</label><select class="select" id="field-instrumentMode" name="instrumentMode" required><option value="portfolio" ${mode === "portfolio" ? "selected" : ""}>Portföydeki müşteri çekini ciro et</option><option value="own" ${mode === "own" ? "selected" : ""}>Kendi Çekimiz</option></select></div><div id="paymentInstrumentDetails" class="form-grid relation-grid">${paymentInstrumentDetails(transactionType, mode, row)}</div>`;
+    } else {
+      html += paymentInstrumentDetails(transactionType, "portfolio", row);
+    }
   }
   return html;
 }
@@ -808,13 +861,20 @@ function bindCashRelations(transactionType) {
     const contact = records("contacts").find(item => item.id === $("#field-contactId")?.value);
     const source = sourceRecords(transactionType, contact?.name || "").find(item => item.id === event.target.value);
     if (!source) return;
-    if (!PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+    if (!PAYMENT_INSTRUMENT_TYPES.has(transactionType) || $("#field-instrumentMode")?.value === "own") {
       $("#field-amount").value = payment ? Math.max(0, number(source.amount) - number(source.paidAmount)) : Math.max(0, number(source.total) - number(source.collected));
     }
   });
-  $("#field-instrumentId")?.addEventListener("change", event => {
+  const bindInstrumentAmount = () => $("#field-instrumentId")?.addEventListener("change", event => {
     const instrument = records("checks").find(item => item.id === event.target.value);
     if (instrument) $("#field-amount").value = number(instrument.amount);
+  });
+  bindInstrumentAmount();
+  $("#field-instrumentMode")?.addEventListener("change", event => {
+    const details = $("#paymentInstrumentDetails");
+    if (details) details.innerHTML = paymentInstrumentDetails(transactionType, event.target.value);
+    bindInstrumentAmount();
+    if (event.target.value === "own" && $("#field-sourceRecordId")?.value) $("#field-sourceRecordId").dispatchEvent(new Event("change"));
   });
 }
 
@@ -1296,7 +1356,7 @@ function openModal(id = null) {
   const row = source.find(item => item.id === id) || {};
   state.editId = id;
   $("#modalTitle").textContent = section.title + (id ? " — Düzenle" : " — Yeni Kayıt");
-  $("#recordFields").innerHTML = section.fields.map(field => `<div class="field"><label for="field-${field.name}">${field.label}</label>${fieldInput(field, field.name === "password" ? "" : row[field.name] ?? "")}</div>`).join("");
+  $("#recordFields").innerHTML = formFields(section).map(field => `<div class="field"><label for="field-${field.name}">${field.label}</label>${fieldInput(field, field.name === "password" ? "" : row[field.name] ?? "")}</div>`).join("");
   $("#recordModal").classList.add("open");
 }
 
@@ -1344,6 +1404,7 @@ function referenceCount(page, row) {
   const mapping = REFERENCE_FIELDS[page] || {};
   let count = Object.entries(mapping).reduce((total, [targetPage, fields]) => total + records(targetPage).filter(item => fields.some(field => item[field] === row.name)).length, 0);
   if (page === "contacts") count += records("cash").filter(item => item.contactId === row.id || item.contactName === row.name).length;
+  if (page === "bank_accounts") count += records("cash").filter(item => item.bankAccountId === row.id).length;
   if (page === "staff") {
     count += records("timesheets").filter(item => item.staffId === row.id).length;
     count += records("cash").filter(item => item.staffId === row.id).length;
@@ -1670,6 +1731,10 @@ async function saveRecord(event) {
     if (data.password) data.passwordHash = await hashPassword(data.password);
     delete data.password;
   }
+  if (state.page === "bank_accounts") {
+    data.iban = data.iban.replaceAll(" ", "").toUpperCase();
+    if (target.some(item => item.id !== state.editId && item.iban === data.iban)) return toast("Bu IBAN daha önce başka bir banka hesabında kullanılmış.");
+  }
   if (state.page === "purchases") {
     const inventoryError = purchaseInventoryError(previousRow, data);
     if (inventoryError) return toast(inventoryError);
@@ -1756,9 +1821,16 @@ function saveCashRecord(data) {
   const staff = records("staff").find(item => item.id === data.staffId);
   if (CONTACT_TYPES.has(transactionType) && !contact) return toast("Bu işlem için tanımlı bir cari seçmelisiniz.");
   if (STAFF_TYPES.has(transactionType) && !staff) return toast("Bu işlem için tanımlı bir personel seçmelisiniz.");
+  const affectsCash = CASH_IN.has(transactionType) || CASH_OUT.has(transactionType);
+  const selectedBankId = data.settlementAccount?.startsWith("bank:") ? data.settlementAccount.slice(5) : "";
+  const bankAccount = selectedBankId ? records("bank_accounts").find(item => item.id === selectedBankId && item.status === "Aktif") : null;
+  if (affectsCash && selectedBankId && !bankAccount) return toast("Aktif bir banka hesabı seçmelisiniz.");
+  const accountType = affectsCash ? bankAccount ? "bank" : "cash" : "none";
+  const accountName = accountType === "bank" ? bankAccount.name : accountType === "cash" ? "Nakit Kasa" : "Nakit dışı işlem";
 
   let instrument = null;
-  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+  const ownCheckPayment = transactionType === "Çek Ödeme" && data.instrumentMode === "own";
+  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType) && !ownCheckPayment) {
     instrument = eligibleInstruments(transactionType).find(item => item.id === data.instrumentId);
     if (!instrument) return toast("Ödemeye uygun portföy kaydı seçmelisiniz.");
     data.amount = instrument.amount;
@@ -1782,6 +1854,33 @@ function saveCashRecord(data) {
     if (number(data.amount) > remaining) return toast("İşlem tutarı bağlı kaydın kalan tutarını aşamaz.");
   }
 
+  if (ownCheckPayment) {
+    const ownBankAccount = records("bank_accounts").find(item => item.id === data.ownBankAccountId && item.status === "Aktif");
+    if (!ownBankAccount) return toast("Kendi çekiniz için aktif banka hesabı seçmelisiniz.");
+    if (records("checks").some(item => item.type === "Verilen Çek" && item.number === data.instrumentNumber)) return toast("Bu çek numarası daha önce kaydedilmiş.");
+    instrument = {
+      id: uid(),
+      type: "Verilen Çek",
+      origin: "Kendi Çekimiz",
+      ownCheck: true,
+      number: data.instrumentNumber,
+      party: contact.name,
+      bank: ownBankAccount.bank,
+      bankAccountId: ownBankAccount.id,
+      bankAccountName: ownBankAccount.name,
+      dueDate: data.dueDate,
+      amount: data.amount,
+      status: "Portföyde",
+      automatic: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    (state.db.records.checks ||= []).push(instrument);
+    data.createdInstrumentId = instrument.id;
+    data.instrumentId = instrument.id;
+    data.referenceNo = instrument.number;
+  }
+
   if (COLLECTION_INSTRUMENT_TYPES.has(transactionType)) {
     const instrumentType = transactionType.startsWith("Çek") ? "Alınan Çek" : "Alınan Senet";
     if (records("checks").some(item => item.type === instrumentType && item.number === data.instrumentNumber)) {
@@ -1790,6 +1889,7 @@ function saveCashRecord(data) {
     instrument = {
       id: uid(),
       type: instrumentType,
+      origin: "Cari Belgesi",
       number: data.instrumentNumber,
       party: contact.name,
       bank: data.instrumentBank,
@@ -1805,8 +1905,8 @@ function saveCashRecord(data) {
     data.referenceNo = instrument.number;
   }
 
-  const previousInstrumentStatus = PAYMENT_INSTRUMENT_TYPES.has(transactionType) ? instrument.status : "";
-  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType)) {
+  const previousInstrumentStatus = PAYMENT_INSTRUMENT_TYPES.has(transactionType) && !ownCheckPayment ? instrument.status : "";
+  if (PAYMENT_INSTRUMENT_TYPES.has(transactionType) && !ownCheckPayment) {
     instrument.status = "Ciro Edildi";
     instrument.endorsedTo = contact.name;
     instrument.updatedAt = new Date().toISOString();
@@ -1833,8 +1933,12 @@ function saveCashRecord(data) {
     staffId: staff?.id || "",
     staffName: staff?.name || "",
     relatedName: contact?.name || staff?.name || "—",
+    accountType,
+    accountName,
+    bankAccountId: bankAccount?.id || "",
     sourceRecordId: data.sourceRecordId || "",
     sourceType,
+    instrumentMode: ownCheckPayment ? "own" : PAYMENT_INSTRUMENT_TYPES.has(transactionType) ? "portfolio" : "",
     instrumentId: data.instrumentId || "",
     createdInstrumentId: data.createdInstrumentId || "",
     previousInstrumentStatus,
@@ -1842,7 +1946,7 @@ function saveCashRecord(data) {
     amount: data.amount,
     description: data.description,
     direction: CASH_IN.has(transactionType) ? "in" : CASH_OUT.has(transactionType) ? "out" : "neutral",
-    affectsCash: CASH_IN.has(transactionType) || CASH_OUT.has(transactionType),
+    affectsCash,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -1988,7 +2092,7 @@ function saveSettings(event) {
 function exportCsv() {
   const section = window.YAPI360_SECTIONS[state.page];
   const fields = tableFields(section);
-  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : records(state.page);
+  const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : state.page === "bank_accounts" ? bankAccountsWithBalances() : records(state.page);
   const exportValue = (field, row) => {
     if (field.type === "staffPhoto") return row.photo?.name || "";
     if (["staffDocuments", "contractDocuments", "progressDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
@@ -2085,7 +2189,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.10.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.11.0", { updateViaCache: "none" });
     registration.update();
   });
 }

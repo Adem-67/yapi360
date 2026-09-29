@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.10.0", "data.js?v=4.10.0", "app.js?v=4.10.0", "manifest.webmanifest?v=4.10.0"]) {
+for (const asset of ["styles.css?v=4.11.0", "data.js?v=4.11.0", "app.js?v=4.11.0", "manifest.webmanifest?v=4.11.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.10.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.11.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -46,6 +46,8 @@ if (!app.includes('sourceType: "progress"') || !app.includes("Bağlı ${payment 
 for (const metric of ["PLANLANAN PROJE MALİYETİ", "AKTİF SÖZLEŞME TUTARI", "TOPLAM HAKEDİŞ", "MEVCUT STOK DEĞERİ", "KASA BAKİYESİ", "ALACAK BAKİYESİ", "ÖDENECEK ÇEK / SENET", "TAHSİL EDİLECEK ÇEK / SENET"]) {
   if (!app.includes(metric)) throw new Error(`Yönetim paneli göstergesi eksik: ${metric}`);
 }
+if (!data.includes('bank_accounts') || !app.includes("cashAccountField") || !app.includes("bankAccountBalance") || !app.includes("BANKA BAKİYESİ")) throw new Error("Banka hesabı ve kasa/banka ayrımı eksik.");
+if (!app.includes("Kendi Çekimiz") || !app.includes("ownCheckPayment") || !app.includes('origin: "Kendi Çekimiz"') || !data.includes('f("origin", "Belge kaynağı"')) throw new Error("Kendi çekimizle ödeme akışı eksik.");
 if (!data.includes('specialForm: "subcontractor"') || !app.includes("subcontractorContractOptions") || !app.includes("saveSubcontractorRecord")) throw new Error("Taşeron-sözleşme seçim ilişkisi eksik.");
 if (!app.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) throw new Error("Excel dosya desteği eksik.");
 if (manifest.name !== "Yapı360" || !html.includes("<title>İnşaat Yönetim Platformu</title>")) throw new Error("PWA pencere başlığı tekilleştirilmemiş.");
