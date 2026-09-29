@@ -87,7 +87,7 @@ window.YAPI360_SECTIONS = {
     title: "Kategoriler", icon: "◆", description: "Finans, stok ve operasyon sınıflandırmaları.",
     fields: [f("name", "Kategori"), f("group", "Grup", "select", { options: ["Gelir", "Gider", "Stok", "Hizmet", "Demirbaş"] }), f("code", "Kod"), f("status", "Durum", "select", { options: ["Aktif", "Pasif"] })]
   },
-  contact_ledger: { title: "Cari Hesap Hareketleri", icon: "▤", description: "Alış, satış ve tahsilatlardan oluşan cari sonuçları.", special: "contactLedger" },
+  contact_ledger: { title: "Cari Hesap Hareketleri", icon: "▤", description: "Cari ve tarih aralığına göre borç, alacak ve bakiye ekstresi.", special: "contactLedger" },
   staff_ledger: { title: "Personel Hesap Hareketleri", icon: "▥", description: "Ücret ve avans sonuçlarının personel bazında görünümü.", special: "staffLedger" },
   staff_assignment_report: { title: "Personel Şantiye Raporu", icon: "⇄", description: "Personelin dönemsel proje ve şantiye görevlendirme geçmişi.", special: "staffAssignmentReport" },
   cost_analysis: { title: "Maliyet Analizi", icon: "◔", description: "Proje bütçesi ile gerçekleşen alış maliyetinin karşılaştırması.", special: "costAnalysis" },
