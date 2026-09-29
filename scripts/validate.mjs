@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.7.0", "data.js?v=4.7.0", "app.js?v=4.7.0", "manifest.webmanifest?v=4.7.0"]) {
+for (const asset of ["styles.css?v=4.8.0", "data.js?v=4.8.0", "app.js?v=4.8.0", "manifest.webmanifest?v=4.8.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.7.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.8.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -39,6 +39,8 @@ if (data.includes('f("advance", "Avans"')) throw new Error("Personel kartında a
 if (!data.includes('f("setupDate", "Şantiye kurulum tarihi", "date")') || !data.includes('f("plannedEndDate", "Planlanan bitiş tarihi", "date")')) throw new Error("Şantiye kurulum ve planlanan bitiş tarihleri eksik.");
 if (data.includes('f("planned", "Planlanan (%)"') || data.includes('f("actual", "Gerçekleşen (%)"')) throw new Error("Şantiye kartında elle girilen ilerleme yüzdeleri kalmış.");
 if (!data.includes('specialForm: "contract"') || !app.includes("openContractModal") || !app.includes("saveContractRecord")) throw new Error("Sözleşme tarih ve dosya formu eksik.");
+if (!data.includes('specialForm: "progress"') || !data.includes('"progressDocuments"') || !app.includes("openProgressModal") || !app.includes("saveProgressRecord")) throw new Error("Hakediş dosya formu eksik.");
+if (!app.includes('records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status))')) throw new Error("Onaylı hakediş-cari alacak ilişkisi eksik.");
 if (!data.includes('specialForm: "subcontractor"') || !app.includes("subcontractorContractOptions") || !app.includes("saveSubcontractorRecord")) throw new Error("Taşeron-sözleşme seçim ilişkisi eksik.");
 if (!app.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) throw new Error("Excel dosya desteği eksik.");
 if (manifest.name !== "Yapı360" || !html.includes("<title>İnşaat Yönetim Platformu</title>")) throw new Error("PWA pencere başlığı tekilleştirilmemiş.");

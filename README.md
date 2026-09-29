@@ -1,4 +1,4 @@
-# Yapı360 v4.7
+# Yapı360 v4.8
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -25,6 +25,9 @@
 - Şantiye kartı → proje + sorumlu + kurulum tarihi + planlanan bitiş tarihi
 - Sözleşme kartı → başlangıç/bitiş tarihi + PDF, görsel, Word ve Excel dosyaları
 - Taşeron kartı → seçilen taşeron cariye ait sözleşmeler + sözleşmeden otomatik proje eşleştirmesi
+- Hakediş kartı → çoklu PDF, görsel, Word ve Excel dosyası + onay sonrası taşeron cari alacağı/firma borcu
+- Hakediş durumu → “Taslak” ve “Onay Bekliyor” bakiyeyi etkilemez; “Onaylandı” ve “Ödendi” cari hesaba yansır
+- Hakediş ödemesi → Kasa & Finans Hareketleri’nde aynı cariye kaydedilen “Ödeme” ile cari alacağı azalır
 - Günlük puantaj → tarihte geçerli görevlendirmeden proje/şantiye seçimi + tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı
 - Ana depo sevki → proje + projeye bağlı şantiye + sevk eden personel + stok düşümü

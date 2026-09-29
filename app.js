@@ -43,6 +43,7 @@ const state = {
   editId: null,
   staffDraft: null,
   contractDraft: null,
+  progressDraft: null,
   sort: { field: "", direction: 1 },
   timesheetPeriod: new Date().toISOString().slice(0, 7),
   timesheetDate: new Date().toISOString().slice(0, 10)
@@ -286,6 +287,7 @@ function renderList(section, sourceRows) {
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
     ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
+    ${state.page === "progress" ? '<div class="callout">Onaylanan hakediş taşeron carinin alacağına ve firma borcuna yansır. Hakediş ödemesini Kasa & Finans Hareketleri üzerinden aynı cariye “Ödeme” olarak kaydedin.</div>' : ""}
     ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
     ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
@@ -337,7 +339,7 @@ function formatCell(field, value, row) {
     const complete = row.entryDocument && (row.status !== "Ayrıldı" || row.exitDocument);
     return `<span class="badge ${complete ? "" : "warning"}">${documents.length} evrak${complete ? "" : " · eksik"}</span>`;
   }
-  if (field.type === "contractDocuments") {
+  if (["contractDocuments", "progressDocuments"].includes(field.type)) {
     const documents = Array.isArray(row.documents) ? row.documents : [];
     return `<span class="badge ${documents.length ? "" : "warning"}">${documents.length} dosya</span>`;
   }
@@ -363,6 +365,7 @@ function contactSummary() {
   };
   records("contacts").forEach(item => ensure(item.name).opening += number(item.openingBalance));
   records("purchases").forEach(item => ensure(item.supplier).purchases += number(item.amount));
+  records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status)).forEach(item => ensure(item.subcontractor).purchases += number(item.amount));
   records("sales").forEach(item => { const row = ensure(item.customer); row.sales += number(item.total); row.collected += number(item.collected); });
   records("cash").forEach(item => {
     if (!item.contactName) return;
@@ -616,7 +619,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.7.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.8.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -892,6 +895,68 @@ function openContractModal(id = null) {
   $("#recordModal").classList.add("open");
 }
 
+function progressDocumentBytes(draft = state.progressDraft) {
+  return (draft?.documents || []).reduce((sum, file) => sum + number(file.size), 0);
+}
+
+function progressAttachmentCard(file, index) {
+  return `<article class="staff-file-card"><span class="staff-file-icon">▤</span><div><strong>${escapeHtml(file.name)}</strong><small>${staffFileSize(file.size)}</small></div><button class="btn ghost small" type="button" data-progress-file-download="${index}">İndir</button><button class="btn danger small" type="button" data-progress-file-remove="${index}">Kaldır</button></article>`;
+}
+
+function renderProgressDraftFiles() {
+  if (!state.progressDraft) return;
+  if ($("#progressDocuments")) $("#progressDocuments").innerHTML = state.progressDraft.documents.length
+    ? state.progressDraft.documents.map(progressAttachmentCard).join("")
+    : '<span class="staff-file-empty">Henüz hakediş dosyası eklenmedi.</span>';
+  if ($("#progressDocumentUsage")) $("#progressDocumentUsage").textContent = `${staffFileSize(progressDocumentBytes())} / ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)}`;
+}
+
+function bindProgressForm() {
+  bindStaffFileInput("#progressFiles", async files => {
+    const additions = await Promise.all(files.map(createStaffDocument));
+    if (progressDocumentBytes() + additions.reduce((sum, file) => sum + file.size, 0) > MAX_STAFF_DOCUMENT_TOTAL_BYTES) throw new Error(`Hakediş dosyalarının toplamı ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)} sınırını aşamaz.`);
+    state.progressDraft.documents.push(...additions);
+    renderProgressDraftFiles();
+  });
+  $("#recordFields").onclick = event => {
+    const download = event.target.closest("[data-progress-file-download]");
+    const remove = event.target.closest("[data-progress-file-remove]");
+    if (download) {
+      const file = state.progressDraft.documents[number(download.dataset.progressFileDownload)];
+      if (file?.dataUrl) {
+        const anchor = document.createElement("a");
+        anchor.href = file.dataUrl;
+        anchor.download = file.name;
+        anchor.click();
+      }
+    }
+    if (remove) {
+      state.progressDraft.documents.splice(number(remove.dataset.progressFileRemove), 1);
+      renderProgressDraftFiles();
+    }
+  };
+  renderProgressDraftFiles();
+}
+
+function openProgressModal(id = null) {
+  const row = records("progress").find(item => item.id === id) || {};
+  const subcontractors = records("contacts").filter(item => item.type === "Taşeron");
+  const projects = records("projects");
+  state.editId = id;
+  state.progressDraft = { documents: Array.isArray(row.documents) ? [...row.documents] : [] };
+  $("#recordModal").classList.add("contract-modal");
+  $("#modalTitle").textContent = "Hakediş" + (id ? " — Düzenle" : " — Yeni Kayıt");
+  $("#recordFields").innerHTML = `
+    <div class="field"><label for="field-number">Hakediş no</label><input class="input" id="field-number" name="number" value="${escapeHtml(row.number || "")}" required></div>
+    <div class="field"><label for="field-subcontractor">Taşeron / cari</label><select class="select" id="field-subcontractor" name="subcontractor" required>${namedRelationOptions(subcontractors, row.subcontractor || "", "Önce Taşeron türünde cari tanımlayın")}</select></div>
+    <div class="field"><label for="field-project">Proje</label><select class="select" id="field-project" name="project" required>${namedRelationOptions(projects, row.project || "", "Önce proje tanımlayın")}</select></div>
+    <div class="field"><label for="field-amount">Tutar</label><input class="input" id="field-amount" name="amount" type="number" min="0.01" step="0.01" value="${escapeHtml(row.amount || "")}" required></div>
+    <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"].map(status => `<option ${status === (row.status || "Taslak") ? "selected" : ""}>${status}</option>`).join("")}</select></div>
+    <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Hakediş Dosyaları</strong><small>Hakediş raporu, metraj, icmal, tutanak ve Excel eklerini yükleyebilirsiniz. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="progressFiles">Dosya Ekle</label><input id="progressFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" multiple hidden></div><div id="progressDocuments" class="staff-file-list"></div><small class="staff-storage-note">Dosya kullanımı: <strong id="progressDocumentUsage"></strong></small></section>`;
+  bindProgressForm();
+  $("#recordModal").classList.add("open");
+}
+
 function subcontractorContracts(contactName) {
   return records("contracts").filter(item => item.party === contactName);
 }
@@ -1140,6 +1205,7 @@ function openModal(id = null) {
   if (section.specialForm === "cash") return openCashModal(id);
   if (section.specialForm === "warehouse") return openWarehouseModal();
   if (section.specialForm === "contract") return openContractModal(id);
+  if (section.specialForm === "progress") return openProgressModal(id);
   if (section.specialForm === "subcontractor") return openSubcontractorModal(id);
   if (section.specialForm === "staff") return openStaffModal(id);
   if (section.specialForm === "staffAssignment") return openStaffAssignmentModal(id);
@@ -1348,6 +1414,51 @@ function saveContractRecord(data) {
   toast(wasEdit ? "Sözleşme güncellendi." : "Sözleşme oluşturuldu.");
 }
 
+function saveProgressRecord(data) {
+  const target = state.db.records.progress ||= [];
+  let row = target.find(item => item.id === state.editId);
+  const wasEdit = Boolean(row);
+  const previousRow = row ? { ...row, documents: [...(row.documents || [])] } : null;
+  const progressNumber = data.number.trim();
+  const contact = records("contacts").find(item => item.name === data.subcontractor && item.type === "Taşeron");
+  const project = records("projects").find(item => item.name === data.project);
+  if (!contact) return toast("Hakediş için Taşeron türünde tanımlı bir cari seçmelisiniz.");
+  if (!project) return toast("Hakediş için tanımlı bir proje seçmelisiniz.");
+  if (target.some(item => item.id !== state.editId && String(item.number).toLocaleLowerCase("tr") === progressNumber.toLocaleLowerCase("tr"))) return toast("Bu hakediş numarası daha önce kullanılmış.");
+  if (number(data.amount) <= 0) return toast("Hakediş tutarı sıfırdan büyük olmalıdır.");
+  if (progressDocumentBytes() > MAX_STAFF_DOCUMENT_TOTAL_BYTES) return toast("Hakediş dosyalarının toplam boyutu sınırı aşıyor.");
+  const progress = {
+    number: progressNumber,
+    subcontractor: contact.name,
+    project: project.name,
+    amount: data.amount,
+    status: data.status,
+    documents: state.progressDraft.documents,
+    updatedAt: new Date().toISOString()
+  };
+  if (row) {
+    Object.assign(row, progress);
+  } else {
+    row = { id: uid(), ...progress, createdAt: new Date().toISOString() };
+    target.push(row);
+  }
+  audit(wasEdit ? "Hakediş güncellendi" : "Hakediş oluşturuldu", progressNumber + " · " + contact.name);
+  try {
+    persist();
+  } catch {
+    state.db.audit.shift();
+    if (!wasEdit) target.splice(target.indexOf(row), 1);
+    else {
+      Object.keys(row).forEach(key => delete row[key]);
+      Object.assign(row, previousRow);
+    }
+    return toast("Hakediş dosyaları bu cihazın yerel saklama sınırını aştı. Daha küçük dosyalar seçin.");
+  }
+  closeModal();
+  renderPage();
+  toast(wasEdit ? "Hakediş güncellendi." : "Hakediş oluşturuldu.");
+}
+
 function saveSubcontractorRecord(data) {
   const target = state.db.records.subcontractors ||= [];
   let row = target.find(item => item.id === state.editId);
@@ -1453,6 +1564,7 @@ async function saveRecord(event) {
   if (section.specialForm === "cash") return saveCashRecord(data);
   if (section.specialForm === "warehouse") return saveWarehouseRecord(data);
   if (section.specialForm === "contract") return saveContractRecord(data);
+  if (section.specialForm === "progress") return saveProgressRecord(data);
   if (section.specialForm === "subcontractor") return saveSubcontractorRecord(data);
   if (section.specialForm === "staff") return saveStaffRecord(data);
   if (section.specialForm === "staffAssignment") return saveStaffAssignment(data);
@@ -1764,6 +1876,7 @@ function closeModal() {
   state.editId = null;
   state.staffDraft = null;
   state.contractDraft = null;
+  state.progressDraft = null;
 }
 
 function saveSettings(event) {
@@ -1781,7 +1894,7 @@ function exportCsv() {
   const source = state.page === "users" ? state.db.users : state.page === "cash" ? derivedCash() : records(state.page);
   const exportValue = (field, row) => {
     if (field.type === "staffPhoto") return row.photo?.name || "";
-    if (["staffDocuments", "contractDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
+    if (["staffDocuments", "contractDocuments", "progressDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
     return row[field.name] ?? "";
   };
   const csv = [fields.map(field => field.label), ...source.map(row => fields.map(field => exportValue(field, row)))]
@@ -1875,7 +1988,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.7.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.8.0", { updateViaCache: "none" });
     registration.update();
   });
 }
