@@ -2,8 +2,8 @@ window.YAPI360_NAV = [
   { label: "GENEL", items: ["dashboard"] },
   { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
   { label: "FİNANS", items: ["cash", "purchases", "sales", "checks"] },
-  { label: "OPERASYON", items: ["contacts", "staff", "timesheets", "inventory", "assets", "categories"] },
-  { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "cost_analysis"] },
+  { label: "OPERASYON", items: ["contacts", "staff", "timesheets", "inventory", "warehouse", "assets", "categories"] },
+  { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "cost_analysis", "warehouse_report"] },
   { label: "YÖNETİM", items: ["users", "settings", "audit"] }
 ];
 
@@ -25,7 +25,7 @@ window.YAPI360_SECTIONS = {
   },
   subcontractors: {
     title: "Taşeronlar", icon: "▧", description: "Taşeron sözleşmesi, uzmanlık ve bakiye takibi.",
-    fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
+    fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("materialProvision", "Malzeme sorumluluğu", "select", { options: ["Taşeron Sağlar", "Firma Sağlar"] }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
   },
   progress: {
     title: "Hakedişler", icon: "₺", description: "Hakediş hazırlama, onay ve ödeme akışı.",
@@ -38,7 +38,7 @@ window.YAPI360_SECTIONS = {
   },
   purchases: {
     title: "Alış İşlemleri", icon: "🛒", description: "Tedarikçi, proje ve stokla ilişkili alış kayıtları.",
-    fields: [f("date", "Tarih", "date"), f("supplier", "Tedarikçi / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("item", "Stok / hizmet", "relation", { source: "inventory" }), f("quantity", "Miktar", "number"), f("amount", "Toplam tutar", "number"), f("paymentStatus", "Ödeme", "select", { options: ["Ödenmedi", "Kısmi", "Ödendi"] })]
+    fields: [f("date", "Tarih", "date"), f("supplier", "Tedarikçi / cari", "relation", { source: "contacts" }), f("project", "İlgili proje", "relation", { source: "projects", optional: true }), f("item", "Stok / hizmet", "relation", { source: "inventory" }), f("quantity", "Miktar", "number"), f("amount", "Toplam tutar", "number"), f("paymentStatus", "Ödeme", "select", { options: ["Ödenmedi", "Kısmi", "Ödendi"] })]
   },
   sales: {
     title: "Satış & Tahsilat", icon: "▣", description: "Müşteri satışı, tahsilat ve kalan bakiye takibi.",
@@ -59,7 +59,11 @@ window.YAPI360_SECTIONS = {
   timesheets: { title: "Puantaj Planı", icon: "◫", description: "Günlük çalışma durumu, yevmiye çarpanı ve aylık dönem toplamları.", special: "timesheets" },
   inventory: {
     title: "Stoklar / Hizmetler", icon: "▦", description: "Malzeme ve hizmet kartları, kritik stok kontrolü.",
-    fields: [f("name", "Stok / hizmet"), f("type", "Tür", "select", { options: ["Malzeme", "Hizmet"] }), f("supplier", "Varsayılan tedarikçi / cari", "relation", { source: "contacts", optional: true }), f("category", "Kategori"), f("unit", "Birim"), f("onHand", "Mevcut", "number"), f("critical", "Kritik seviye", "number")]
+    fields: [f("name", "Stok / hizmet"), f("type", "Tür", "select", { options: ["Malzeme", "Hizmet"] }), f("supplier", "Varsayılan tedarikçi / cari", "relation", { source: "contacts", optional: true }), f("category", "Kategori"), f("unit", "Birim"), f("onHand", "Ana depo miktarı", "number"), f("critical", "Kritik seviye", "number")]
+  },
+  warehouse: {
+    title: "Ana Depo & Sevkiyat", icon: "▦", description: "Alışlardan oluşan ana depo girişleri ile proje ve şantiye sevkleri.", specialForm: "warehouse",
+    fields: [f("date", "Tarih", "date"), f("movementType", "Hareket"), f("itemName", "Malzeme"), f("quantity", "Miktar", "number"), f("unit", "Birim"), f("usageType", "Kullanım"), f("project", "Proje"), f("site", "Şantiye"), f("subcontractor", "Taşeron"), f("dispatchedBy", "Sevk eden"), f("note", "Açıklama")]
   },
   assets: {
     title: "Demirbaş Takibi", icon: "⚒", description: "Makine, araç ve ekipmanın zimmet ve bakım durumu.",
@@ -72,6 +76,7 @@ window.YAPI360_SECTIONS = {
   contact_ledger: { title: "Cari Hesap Hareketleri", icon: "▤", description: "Alış, satış ve tahsilatlardan oluşan cari sonuçları.", special: "contactLedger" },
   staff_ledger: { title: "Personel Hesap Hareketleri", icon: "▥", description: "Ücret ve avans sonuçlarının personel bazında görünümü.", special: "staffLedger" },
   cost_analysis: { title: "Maliyet Analizi", icon: "◔", description: "Proje bütçesi ile gerçekleşen alış maliyetinin karşılaştırması.", special: "costAnalysis" },
+  warehouse_report: { title: "Proje / Şantiye Sevk Raporu", icon: "▥", description: "Ana depodan proje ve şantiyelere gönderilen malzemelerin özeti.", special: "warehouseReport" },
   users: {
     title: "Kullanıcı Yönetimi", icon: "♙", description: "Firma kullanıcıları, roller ve erişim durumu.", special: "users",
     fields: [f("name", "Ad soyad"), f("email", "E-posta", "email"), f("role", "Rol", "select", { options: ["Admin", "Yönetici", "Muhasebe", "Satış", "Şantiye", "Görüntüleme"] }), f("status", "Durum", "select", { options: ["Aktif", "Pasif"] }), f("password", "Geçici şifre", "password", { table: false })]

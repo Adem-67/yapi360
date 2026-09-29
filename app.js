@@ -12,11 +12,12 @@ const COLLECTION_INSTRUMENT_TYPES = new Set(["Çek Tahsilat", "Senet Tahsilat"])
 const PAYMENT_INSTRUMENT_TYPES = new Set(["Çek Ödeme", "Senet Ödeme"]);
 const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "sites", "staff", "inventory"]);
 const REFERENCE_FIELDS = {
-  contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"] },
-  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"] },
-  sites: { staff: ["site"], assets: ["site"] },
-  staff: { sites: ["manager"], assets: ["assignedTo"] },
-  inventory: { purchases: ["item"] }
+  contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"] },
+  projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"] },
+  sites: { staff: ["site"], assets: ["site"], warehouse: ["site"] },
+  staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"] },
+  inventory: { purchases: ["item"], warehouse: ["itemName"] },
+  subcontractors: { warehouse: ["subcontractor"] }
 };
 
 const emptyDb = () => ({
@@ -199,6 +200,7 @@ function renderPage() {
   else if (special === "contactLedger") $("#content").innerHTML = renderContactLedger();
   else if (special === "staffLedger") $("#content").innerHTML = renderStaffLedger();
   else if (special === "costAnalysis") $("#content").innerHTML = renderCostAnalysis();
+  else if (special === "warehouseReport") $("#content").innerHTML = renderWarehouseReport();
   else if (special === "timesheets") $("#content").innerHTML = renderTimesheets();
   else if (special === "settings") $("#content").innerHTML = renderSettings();
   else if (special === "audit") $("#content").innerHTML = renderAudit();
@@ -274,9 +276,11 @@ function renderList(section, sourceRows) {
   const addAllowed = canEdit() && state.page !== "cash" || canEdit();
   return `
     ${state.page === "cash" ? '<div class="callout">İşlem tipine göre cari, personel veya çek/senet kaydı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak nakit bakiyesini değiştirmez.</div>' : ""}
+    ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
+    ${state.page === "warehouse" ? renderWarehouseStockOverview() : ""}
     <div class="toolbar">
       <input class="input search" id="search" placeholder="${section.title} içinde ara…">
-      ${addAllowed ? '<button class="btn gold" id="addRecord">+ Yeni Kayıt</button>' : ""}
+      ${addAllowed ? `<button class="btn gold" id="addRecord">${state.page === "warehouse" ? "+ Yeni Sevkiyat" : "+ Yeni Kayıt"}</button>` : ""}
       <button class="btn ghost" id="exportCsv">CSV Dışa Aktar</button>
     </div>
     <div class="table-wrap"><table class="table"><thead><tr>
@@ -284,6 +288,15 @@ function renderList(section, sourceRows) {
       <th>İşlem</th>
     </tr></thead><tbody id="tableBody"></tbody></table></div>
   `;
+}
+
+function renderWarehouseStockOverview() {
+  const items = records("inventory").filter(item => item.type === "Malzeme");
+  if (!items.length) return "";
+  return `<div class="warehouse-stock-grid">${items.map(item => {
+    const critical = number(item.onHand) <= number(item.critical);
+    return `<article class="warehouse-stock ${critical ? "critical" : ""}"><small>ANA DEPO</small><strong>${escapeHtml(item.name)}</strong><span>${number(item.onHand).toLocaleString("tr-TR")} ${escapeHtml(item.unit || "")}</span>${critical ? "<em>Kritik seviye</em>" : ""}</article>`;
+  }).join("")}</div>`;
 }
 
 function renderRows(query = "") {
@@ -305,7 +318,7 @@ function renderRows(query = "") {
 function formatCell(field, value, row) {
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
-  if (["status", "paymentStatus", "type", "transactionType"].includes(field.name)) {
+  if (["status", "paymentStatus", "type", "transactionType", "movementType"].includes(field.name)) {
     const style = /Gecikme|Kritik|Arızalı|Karşılıksız|Ödenmedi/.test(value) ? "danger" : /Bekliyor|Kısmi|Bakımda|Portföyde/.test(value) ? "warning" : "";
     return `<span class="badge ${style}">${escapeHtml(value || "—")}</span>`;
   }
@@ -500,6 +513,26 @@ function renderCostAnalysis() {
   return reportTable(["Proje", "Bütçe", "Gerçekleşen Alış", "Kalan Bütçe", "Kullanım"], rows, "Alış işlemlerindeki proje alanı ile proje bütçesi karşılaştırılır.");
 }
 
+function renderWarehouseReport() {
+  const groups = new Map();
+  records("warehouse").filter(item => item.movementType === "Sevk").forEach(item => {
+    const usageType = item.usageType || "Firma Kullanımı";
+    const subcontractor = item.subcontractor || "—";
+    const key = [item.project, item.site, usageType, subcontractor, item.itemName, item.unit].join("|");
+    if (!groups.has(key)) groups.set(key, { project: item.project, site: item.site, usageType, subcontractor, itemName: item.itemName, unit: item.unit, quantity: 0, dispatches: 0, staff: new Set() });
+    const row = groups.get(key);
+    row.quantity += number(item.quantity);
+    row.dispatches += 1;
+    if (item.dispatchedBy) row.staff.add(item.dispatchedBy);
+  });
+  const rows = [...groups.values()].sort((a, b) => (a.project + a.site + a.itemName).localeCompare(b.project + b.site + b.itemName, "tr"));
+  return reportTable(
+    ["Proje", "Şantiye", "Kullanım", "Taşeron", "Malzeme", "Toplam Miktar", "Sevk Sayısı", "Sevk Edenler"],
+    rows.map(item => [item.project, item.site, item.usageType, item.subcontractor, item.itemName, item.quantity.toLocaleString("tr-TR") + " " + (item.unit || ""), item.dispatches, [...item.staff].join(", ") || "—"]),
+    "Ana depo sevkleri firma kullanımı ve taşerona verilen malzeme olarak proje, şantiye ve malzeme bazında birleştirilir."
+  );
+}
+
 function reportTable(columns, rows, note) {
   return `<div class="callout">${note}</div><div class="table-wrap"><table class="table"><thead><tr>${columns.map(item => `<th>${item}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${columns.length}">${emptyMessage("Sonuç oluşturmak için ilişkili kayıt ekleyin.")}</td></tr>`}</tbody></table></div>`;
 }
@@ -513,7 +546,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.2.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.3.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -664,9 +697,77 @@ function openCashModal(id = null) {
   $("#recordModal").classList.add("open");
 }
 
+function warehouseSites(projectId) {
+  const project = records("projects").find(item => item.id === projectId);
+  return project ? records("sites").filter(item => item.project === project.name) : [];
+}
+
+function warehouseSiteOptions(projectId, selected = "") {
+  return optionList(warehouseSites(projectId), selected, item => item.name, "Önce projeye bağlı şantiye tanımlayın");
+}
+
+function warehouseSubcontractors(projectId) {
+  const project = records("projects").find(item => item.id === projectId);
+  return project ? records("subcontractors").filter(item => item.project === project.name && item.materialProvision === "Firma Sağlar") : [];
+}
+
+function warehouseSubcontractorOptions(projectId) {
+  return optionList(warehouseSubcontractors(projectId), "", item => item.name + " · " + item.specialty, "Bu projede firma malzemeli taşeron anlaşması yok");
+}
+
+function updateWarehouseStockHint() {
+  const item = records("inventory").find(entry => entry.id === $("#field-itemId")?.value);
+  const quantity = $("#field-quantity");
+  if (quantity) quantity.max = item ? number(item.onHand) : "";
+  if ($("#warehouseStockHint")) $("#warehouseStockHint").textContent = item ? `Ana depo kullanılabilir: ${number(item.onHand).toLocaleString("tr-TR")} ${item.unit || ""}` : "Önce malzeme seçin.";
+}
+
+function bindWarehouseRelations() {
+  $("#field-projectId")?.addEventListener("change", event => {
+    $("#field-siteId").innerHTML = warehouseSiteOptions(event.target.value);
+    if ($("#field-subcontractorId")) $("#field-subcontractorId").innerHTML = warehouseSubcontractorOptions(event.target.value);
+  });
+  $("#field-usageType")?.addEventListener("change", refreshWarehouseDestinationOptions);
+  $("#field-itemId")?.addEventListener("change", updateWarehouseStockHint);
+  refreshWarehouseDestinationOptions();
+  updateWarehouseStockHint();
+}
+
+function refreshWarehouseDestinationOptions() {
+  const contractor = $("#field-usageType")?.value === "Taşerona Malzeme";
+  const field = $("#warehouseSubcontractorField");
+  const select = $("#field-subcontractorId");
+  if (!field || !select) return;
+  field.hidden = !contractor;
+  select.required = contractor;
+  if (contractor) select.innerHTML = warehouseSubcontractorOptions($("#field-projectId")?.value || "");
+  else select.value = "";
+}
+
+function openWarehouseModal() {
+  const availableItems = records("inventory").filter(item => item.type === "Malzeme" && number(item.onHand) > 0);
+  const projects = records("projects");
+  const staff = records("staff").filter(item => item.status !== "Ayrıldı");
+  state.editId = null;
+  $("#modalTitle").textContent = "Ana Depo — Yeni Sevkiyat";
+  $("#recordFields").innerHTML = `
+    <div class="field"><label for="field-date">Sevk tarihi</label><input class="input" id="field-date" name="date" type="date" value="${new Date().toISOString().slice(0, 10)}" required></div>
+    <div class="field"><label for="field-itemId">Ana depo malzemesi</label><select class="select" id="field-itemId" name="itemId" required>${optionList(availableItems, "", item => item.name + " · " + number(item.onHand).toLocaleString("tr-TR") + " " + (item.unit || ""), "Sevk edilebilir malzeme yok")}</select><small class="field-note" id="warehouseStockHint">Önce malzeme seçin.</small></div>
+    <div class="field"><label for="field-usageType">Kullanım türü</label><select class="select" id="field-usageType" name="usageType" required><option>Firma Kullanımı</option><option>Taşerona Malzeme</option></select></div>
+    <div class="field"><label for="field-projectId">Proje</label><select class="select" id="field-projectId" name="projectId" required>${optionList(projects, "", item => item.name, "Önce proje tanımlayın")}</select></div>
+    <div class="field"><label for="field-siteId">Şantiye</label><select class="select" id="field-siteId" name="siteId" required>${warehouseSiteOptions("")}</select></div>
+    <div class="field" id="warehouseSubcontractorField" hidden><label for="field-subcontractorId">Taşeron anlaşması</label><select class="select" id="field-subcontractorId" name="subcontractorId">${warehouseSubcontractorOptions("")}</select></div>
+    <div class="field"><label for="field-staffId">Sevk eden personel</label><select class="select" id="field-staffId" name="staffId" required>${optionList(staff, "", item => item.name + " · " + item.role, "Önce aktif personel tanımlayın")}</select></div>
+    <div class="field"><label for="field-quantity">Sevk miktarı</label><input class="input" id="field-quantity" name="quantity" type="number" min="0.01" step="0.01" required></div>
+    <div class="field"><label for="field-note">Açıklama</label><input class="input" id="field-note" name="note" placeholder="İrsaliye, araç veya teslim notu"></div>`;
+  bindWarehouseRelations();
+  $("#recordModal").classList.add("open");
+}
+
 function openModal(id = null) {
   const section = window.YAPI360_SECTIONS[state.page];
   if (section.specialForm === "cash") return openCashModal(id);
+  if (section.specialForm === "warehouse") return openWarehouseModal();
   const source = state.page === "users" ? state.db.users : records(state.page);
   const row = source.find(item => item.id === id) || {};
   state.editId = id;
@@ -728,14 +829,110 @@ function referenceCount(page, row) {
   return count;
 }
 
+function purchaseWarehouseMovement(purchase) {
+  if (!purchase) return undefined;
+  return records("warehouse").find(item => item.purchaseId === purchase.id || (purchase.warehouseMovementId && item.id === purchase.warehouseMovementId));
+}
+
+function purchaseInventoryError(previous, data) {
+  const nextItem = records("inventory").find(item => item.name === data.item);
+  if (!nextItem) return "Alış için tanımlı bir stok veya hizmet seçmelisiniz.";
+  const movement = purchaseWarehouseMovement(previous);
+  if (!movement) return "";
+  const oldItem = records("inventory").find(item => item.id === movement.itemId) || records("inventory").find(item => item.name === movement.itemName);
+  if (!oldItem) return "Alışa bağlı ana depo malzeme kartı bulunamadı.";
+  const oldQuantity = number(movement.quantity);
+  const nextQuantity = nextItem.type === "Malzeme" ? number(data.quantity) : 0;
+  if (oldItem.id === nextItem.id) {
+    const reduction = oldQuantity - nextQuantity;
+    if (reduction > number(oldItem.onHand)) return "Bu alış miktarı azaltılamaz; malzemenin bir bölümü ana depodan sevk edilmiş.";
+  } else if (oldQuantity > number(oldItem.onHand)) {
+    return "Alış malzemesi değiştirilemez; mevcut girişin bir bölümü ana depodan sevk edilmiş.";
+  }
+  return "";
+}
+
+function syncPurchaseInventory(purchase, previous = null) {
+  const warehouse = state.db.records.warehouse ||= [];
+  let movement = purchaseWarehouseMovement(previous || purchase);
+  const item = records("inventory").find(entry => entry.name === purchase.item);
+  const isMaterial = item?.type === "Malzeme";
+  const quantity = isMaterial ? number(purchase.quantity) : 0;
+
+  if (!movement && !isMaterial) return;
+  if (!movement && isMaterial) {
+    item.onHand = number(item.onHand) + quantity;
+    item.updatedAt = new Date().toISOString();
+    movement = {
+      id: uid(), purchaseId: purchase.id, date: purchase.date, movementType: "Giriş", itemId: item.id, itemName: item.name,
+      quantity: purchase.quantity, unit: item.unit || "", sourceName: purchase.supplier, usageType: "Ana Depo Girişi", project: "", site: "", subcontractor: "", dispatchedBy: "Satın alma",
+      note: "Alış kaydı ile ana depo girişi", automatic: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    warehouse.push(movement);
+    purchase.warehouseMovementId = movement.id;
+    audit("Ana depo girişi oluştu", item.name + " · " + quantity.toLocaleString("tr-TR") + " " + (item.unit || ""));
+    return;
+  }
+
+  const oldItem = records("inventory").find(entry => entry.id === movement.itemId) || records("inventory").find(entry => entry.name === movement.itemName);
+  const oldQuantity = number(movement.quantity);
+  if (!isMaterial) {
+    if (oldItem) {
+      oldItem.onHand = Math.max(0, number(oldItem.onHand) - oldQuantity);
+      oldItem.updatedAt = new Date().toISOString();
+    }
+    warehouse.splice(warehouse.indexOf(movement), 1);
+    delete purchase.warehouseMovementId;
+    return;
+  }
+
+  if (oldItem?.id === item.id) {
+    item.onHand = number(item.onHand) + quantity - oldQuantity;
+  } else {
+    if (oldItem) {
+      oldItem.onHand = Math.max(0, number(oldItem.onHand) - oldQuantity);
+      oldItem.updatedAt = new Date().toISOString();
+    }
+    item.onHand = number(item.onHand) + quantity;
+  }
+  item.updatedAt = new Date().toISOString();
+  Object.assign(movement, {
+    purchaseId: purchase.id, date: purchase.date, itemId: item.id, itemName: item.name, quantity: purchase.quantity,
+    unit: item.unit || "", sourceName: purchase.supplier, note: "Alış kaydı ile ana depo girişi", automatic: true,
+    updatedAt: new Date().toISOString()
+  });
+  purchase.warehouseMovementId = movement.id;
+}
+
+function canReversePurchaseInventory(purchase) {
+  const movement = purchaseWarehouseMovement(purchase);
+  if (!movement) return true;
+  const item = records("inventory").find(entry => entry.id === movement.itemId) || records("inventory").find(entry => entry.name === movement.itemName);
+  return item && number(item.onHand) >= number(movement.quantity);
+}
+
+function reversePurchaseInventory(purchase) {
+  const warehouse = state.db.records.warehouse ||= [];
+  const movement = purchaseWarehouseMovement(purchase);
+  if (!movement) return;
+  const item = records("inventory").find(entry => entry.id === movement.itemId) || records("inventory").find(entry => entry.name === movement.itemName);
+  if (item) {
+    item.onHand = Math.max(0, number(item.onHand) - number(movement.quantity));
+    item.updatedAt = new Date().toISOString();
+  }
+  warehouse.splice(warehouse.indexOf(movement), 1);
+}
+
 async function saveRecord(event) {
   event.preventDefault();
   const section = window.YAPI360_SECTIONS[state.page];
   const data = Object.fromEntries(new FormData(event.target));
   if (section.specialForm === "cash") return saveCashRecord(data);
+  if (section.specialForm === "warehouse") return saveWarehouseRecord(data);
   const target = state.page === "users" ? state.db.users : (state.db.records[state.page] ||= []);
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
+  const previousRow = row ? { ...row } : null;
 
   if (UNIQUE_NAME_PAGES.has(state.page) && data.name && target.some(item => item.name.toLocaleLowerCase("tr") === data.name.toLocaleLowerCase("tr") && item.id !== state.editId)) {
     return toast("Bu adla daha önce bir kayıt oluşturulmuş.");
@@ -746,6 +943,10 @@ async function saveRecord(event) {
     if (target.some(item => item.email === data.email && item.id !== state.editId)) return toast("Bu e-posta zaten kayıtlı.");
     if (data.password) data.passwordHash = await hashPassword(data.password);
     delete data.password;
+  }
+  if (state.page === "purchases") {
+    const inventoryError = purchaseInventoryError(previousRow, data);
+    if (inventoryError) return toast(inventoryError);
   }
 
   if (row) {
@@ -760,6 +961,7 @@ async function saveRecord(event) {
     target.push(row);
     audit("Yeni kayıt eklendi", section.title + " · " + recordName(row));
   }
+  if (state.page === "purchases") syncPurchaseInventory(row, previousRow);
   persist();
   closeModal();
   renderPage();
@@ -863,6 +1065,53 @@ function saveCashRecord(data) {
   toast(transactionType + " kaydedildi.");
 }
 
+function saveWarehouseRecord(data) {
+  const item = records("inventory").find(entry => entry.id === data.itemId && entry.type === "Malzeme");
+  const project = records("projects").find(entry => entry.id === data.projectId);
+  const site = records("sites").find(entry => entry.id === data.siteId);
+  const staff = records("staff").find(entry => entry.id === data.staffId && entry.status !== "Ayrıldı");
+  const contractorDelivery = data.usageType === "Taşerona Malzeme";
+  const subcontractor = contractorDelivery ? records("subcontractors").find(entry => entry.id === data.subcontractorId && entry.project === project?.name && entry.materialProvision === "Firma Sağlar") : null;
+  const quantity = number(data.quantity);
+  if (!item) return toast("Ana depodan geçerli bir malzeme seçmelisiniz.");
+  if (!project || !site || site.project !== project.name) return toast("Seçilen şantiye bu projeye bağlı değil.");
+  if (!staff) return toast("Sevk eden aktif personeli seçmelisiniz.");
+  if (contractorDelivery && !subcontractor) return toast("Bu proje için malzemesi firma tarafından sağlanan taşeron anlaşmasını seçmelisiniz.");
+  if (quantity <= 0 || quantity > number(item.onHand)) return toast("Sevk miktarı ana depo stok miktarını aşamaz.");
+
+  item.onHand = number(item.onHand) - quantity;
+  item.updatedAt = new Date().toISOString();
+  const movement = {
+    id: uid(),
+    date: data.date,
+    movementType: "Sevk",
+    itemId: item.id,
+    itemName: item.name,
+    quantity: data.quantity,
+    unit: item.unit || "",
+    sourceName: "Ana Depo",
+    usageType: contractorDelivery ? "Taşerona Malzeme" : "Firma Kullanımı",
+    projectId: project.id,
+    project: project.name,
+    siteId: site.id,
+    site: site.name,
+    staffId: staff.id,
+    dispatchedBy: staff.name,
+    subcontractorId: subcontractor?.id || "",
+    subcontractor: subcontractor?.name || "",
+    note: data.note || "Proje / şantiye sevki",
+    automatic: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  (state.db.records.warehouse ||= []).push(movement);
+  audit("Ana depodan sevk yapıldı", item.name + " · " + project.name + " / " + site.name + (subcontractor ? " · " + subcontractor.name : "") + " · " + quantity.toLocaleString("tr-TR") + " " + (item.unit || ""));
+  persist();
+  closeModal();
+  renderPage();
+  toast("Malzeme sevki kaydedildi.");
+}
+
 function reverseCashMovement(movement) {
   if (movement.createdInstrumentId) {
     const instruments = state.db.records.checks ||= [];
@@ -891,6 +1140,15 @@ function reverseCashMovement(movement) {
   source.updatedAt = new Date().toISOString();
 }
 
+function reverseWarehouseMovement(movement) {
+  if (movement.movementType !== "Sevk") return;
+  const item = records("inventory").find(entry => entry.id === movement.itemId) || records("inventory").find(entry => entry.name === movement.itemName);
+  if (item) {
+    item.onHand = number(item.onHand) + number(movement.quantity);
+    item.updatedAt = new Date().toISOString();
+  }
+}
+
 function recordName(row) {
   return row.name || row.number || row.description || row.customer || row.supplier || row.email || "Kayıt";
 }
@@ -902,8 +1160,11 @@ function deleteRecord(id) {
   if (state.page === "users" && target[index].id === state.user.id) return toast("Aktif kullanıcı kendi hesabını silemez.");
   const references = referenceCount(state.page, target[index]);
   if (references) return toast(`Bu kayıt ${references} işlemde kullanıldığı için silinemez.`);
+  if (state.page === "purchases" && !canReversePurchaseInventory(target[index])) return toast("Bu alış silinemez; malzemenin bir bölümü ana depodan sevk edilmiş.");
   if (!confirm("Bu kaydı kalıcı olarak silmek istediğinize emin misiniz?")) return;
   if (state.page === "cash") reverseCashMovement(target[index]);
+  if (state.page === "warehouse") reverseWarehouseMovement(target[index]);
+  if (state.page === "purchases") reversePurchaseInventory(target[index]);
   const [removed] = target.splice(index, 1);
   audit("Kayıt silindi", window.YAPI360_SECTIONS[state.page].title + " · " + recordName(removed));
   persist();
@@ -1015,7 +1276,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.2.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.3.0", { updateViaCache: "none" });
     registration.update();
   });
 }
