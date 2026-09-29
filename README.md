@@ -1,4 +1,4 @@
-# Yapı360 v4.10
+# Yapı360 v4.11
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
@@ -30,7 +30,10 @@
 - Hakediş durumu → “Taslak” ve “Onay Bekliyor” bakiyeyi etkilemez; “Onaylandı” ve “Ödendi” cari hesaba yansır
 - Hakediş ödemesi → Kasa & Finans Hareketleri’nde taşeron seçildikten sonra yalnızca o carinin onaylı ve bakiyesi kalan hakedişleri listelenir
 - Bağlı hakediş ödemesi → kalan tutarı otomatik getirir; kısmi ödemede bakiyeyi azaltır, tam ödemede hakedişi otomatik “Ödendi” yapar
-- Yönetim paneli → planlanan proje maliyeti, aktif sözleşmeler, onaylı hakedişler, stok değeri, kasa, cari alacak ve açık çek/senet toplamları
+- Banka hesabı → hesap adı, banka, IBAN, açılış bakiyesi ve hareketlerden hesaplanan güncel bakiye
+- Kasa/banka seçimi → ödeme, tahsilat, maaş ve avans hareketleri yalnızca seçilen nakit kasa veya banka hesabının bakiyesini etkiler
+- Kendi çekimizle ödeme → portföy çeki yoksa çek no, firma banka hesabı ve vade girilerek verilen çek oluşturulur; cari ödeme gerçekleşir ve belge “Kendi Çekimiz” olarak raporlanır
+- Yönetim paneli → planlanan proje maliyeti, aktif sözleşmeler, onaylı hakedişler, stok değeri, kasa, banka, cari alacak ve açık çek/senet toplamları
 - Günlük puantaj → tarihte geçerli görevlendirmeden proje/şantiye seçimi + tam gün, yarım gün, izinli + 0–2 yevmiye çarpanı + aylık dönem özeti
 - Malzeme alışı → otomatik ana depo girişi ve stok artışı
 - Ana depo sevki → proje + projeye bağlı şantiye + sevk eden personel + stok düşümü

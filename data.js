@@ -1,7 +1,7 @@
 window.YAPI360_NAV = [
   { label: "GENEL", items: ["dashboard"] },
   { label: "PROJE & ŞANTİYE", items: ["projects", "contracts", "sites", "subcontractors", "progress"] },
-  { label: "FİNANS", items: ["cash", "purchases", "sales", "checks"] },
+  { label: "FİNANS", items: ["cash", "bank_accounts", "purchases", "sales", "checks"] },
   { label: "OPERASYON", items: ["contacts", "staff", "staff_assignments", "timesheets", "inventory", "warehouse", "assets", "categories"] },
   { label: "RAPORLAR", items: ["contact_ledger", "staff_ledger", "staff_assignment_report", "cost_analysis", "warehouse_report"] },
   { label: "YÖNETİM", items: ["users", "settings", "audit"] }
@@ -34,7 +34,11 @@ window.YAPI360_SECTIONS = {
   cash: {
     title: "Kasa & Finans Hareketleri", icon: "↻", description: "Nakit, dekont, personel, çek ve senet işlemlerinin ilişkili kayıtları.",
     specialForm: "cash",
-    fields: [f("date", "Tarih", "date"), f("transactionType", "İşlem tipi"), f("relatedName", "İlişkili kayıt"), f("referenceNo", "Belge / referans"), f("amount", "Tutar", "number"), f("description", "Açıklama")]
+    fields: [f("date", "Tarih", "date"), f("transactionType", "İşlem tipi"), f("relatedName", "İlişkili kayıt"), f("accountName", "Kasa / banka hesabı"), f("referenceNo", "Belge / referans"), f("amount", "Tutar", "number"), f("description", "Açıklama")]
+  },
+  bank_accounts: {
+    title: "Banka Hesapları", icon: "▥", description: "Banka hesapları, IBAN bilgileri ve hareketlerden hesaplanan güncel bakiyeler.",
+    fields: [f("name", "Hesap adı"), f("bank", "Banka"), f("iban", "IBAN"), f("openingBalance", "Açılış bakiyesi", "number"), f("currentBalance", "Güncel bakiye", "number", { form: false }), f("status", "Durum", "select", { options: ["Aktif", "Pasif"] })]
   },
   purchases: {
     title: "Alış İşlemleri", icon: "🛒", description: "Tedarikçi, proje ve stokla ilişkili alış kayıtları.",
@@ -46,7 +50,7 @@ window.YAPI360_SECTIONS = {
   },
   checks: {
     title: "Çek / Senet", icon: "▭", description: "Alınan ve verilen çek-senet vade takibi.",
-    fields: [f("type", "Tür", "select", { options: ["Alınan Çek", "Verilen Çek", "Alınan Senet", "Verilen Senet"] }), f("number", "Belge no"), f("party", "Cari", "relation", { source: "contacts" }), f("bank", "Banka / düzenleyen"), f("dueDate", "Vade", "date"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Portföyde", "Tahsil Edildi", "Ciro Edildi", "Ödendi", "Karşılıksız", "İade"] })]
+    fields: [f("type", "Tür", "select", { options: ["Alınan Çek", "Verilen Çek", "Alınan Senet", "Verilen Senet"] }), f("origin", "Belge kaynağı", "select", { options: ["Cari Belgesi", "Kendi Çekimiz"] }), f("number", "Belge no"), f("party", "Cari", "relation", { source: "contacts" }), f("bank", "Banka / düzenleyen"), f("dueDate", "Vade", "date"), f("amount", "Tutar", "number"), f("status", "Durum", "select", { options: ["Portföyde", "Tahsil Edildi", "Ciro Edildi", "Ödendi", "Karşılıksız", "İade"] })]
   },
   contacts: {
     title: "Cariler", icon: "▥", description: "Müşteri, tedarikçi ve taşeron cari kartları.",
