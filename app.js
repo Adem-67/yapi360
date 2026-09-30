@@ -182,13 +182,26 @@ function logout() {
 }
 
 function renderNav() {
+  const groupTitles = {
+    "GENEL": "Genel",
+    "PROJE & ŞANTİYE": "Proje & Şantiye",
+    "SATINALMA & İDARİ İŞLER": "Satınalma & İdari İşler",
+    "FİNANS": "Finans",
+    "OPERASYON": "Operasyon",
+    "RAPORLAR": "Raporlar",
+    "YÖNETİM": "Yönetim",
+  };
   $("#nav").innerHTML = window.YAPI360_NAV.map(group => `
     <div class="nav-group">
-      <span class="nav-label">${group.label}</span>
-      ${group.items.map(key => {
-        const section = window.YAPI360_SECTIONS[key];
-        return `<button class="nav-item" data-page="${key}"><span class="nav-icon">${section.icon}</span><span>${section.title}</span></button>`;
-      }).join("")}
+      <button class="nav-group-toggle" type="button" data-nav-toggle aria-expanded="false">
+        <span>${groupTitles[group.label] || group.label}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="nav-menu">
+        ${group.items.map(key => {
+          const section = window.YAPI360_SECTIONS[key];
+          return `<button class="nav-item" type="button" data-page="${key}"><span class="nav-icon">${section.icon}</span><span>${section.title}</span></button>`;
+        }).join("")}
+      </div>
     </div>
   `).join("");
 }
@@ -199,6 +212,7 @@ function navigate(page) {
   state.sort = { field: "", direction: 1 };
   history.replaceState(null, "", "#" + page);
   $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
+  $$(".nav-group").forEach(group => group.classList.toggle("has-active", Boolean(group.querySelector(".nav-item.active"))));
   const section = window.YAPI360_SECTIONS[page];
   if (STANDALONE_MODE) document.title = section.title;
   $("#pageTitle").textContent = section.title;
@@ -960,7 +974,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.14.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.15.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -2713,14 +2727,25 @@ function toast(message) {
   toast.timer = setTimeout(() => element.classList.remove("show"), 2400);
 }
 
+function closeNavMenus(except = null) {
+  $$(".nav-group.open").forEach(group => {
+    if (group === except) return;
+    group.classList.remove("open");
+    group.querySelector("[data-nav-toggle]")?.setAttribute("aria-expanded", "false");
+  });
+}
+
 function openSidebar() {
   $("#sidebar").classList.add("open");
   $("#sideBackdrop").style.display = "block";
+  $("#menuToggle").setAttribute("aria-expanded", "true");
 }
 
 function closeSidebar() {
+  closeNavMenus();
   $("#sidebar").classList.remove("open");
   $("#sideBackdrop").style.display = "";
+  $("#menuToggle").setAttribute("aria-expanded", "false");
 }
 
 let deferredPrompt;
@@ -2740,6 +2765,15 @@ $("#installBtn").addEventListener("click", async () => {
 
 $("#authForm").addEventListener("submit", handleAuth);
 $("#nav").addEventListener("click", event => {
+  const toggle = event.target.closest("[data-nav-toggle]");
+  if (toggle) {
+    const group = toggle.closest(".nav-group");
+    const willOpen = !group.classList.contains("open");
+    closeNavMenus(group);
+    group.classList.toggle("open", willOpen);
+    toggle.setAttribute("aria-expanded", String(willOpen));
+    return;
+  }
   const item = event.target.closest("[data-page]");
   if (item) navigate(item.dataset.page);
 });
@@ -2753,6 +2787,12 @@ $("#logoutBtn").addEventListener("click", logout);
 $("#menuToggle").addEventListener("click", openSidebar);
 $("#sideClose").addEventListener("click", closeSidebar);
 $("#sideBackdrop").addEventListener("click", closeSidebar);
+document.addEventListener("click", event => {
+  if (!event.target.closest("#sidebar")) closeNavMenus();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeSidebar();
+});
 $("#recordForm").addEventListener("submit", saveRecord);
 $("#closeModal").addEventListener("click", closeModal);
 $("#cancelModal").addEventListener("click", closeModal);
@@ -2761,7 +2801,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.14.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.15.0", { updateViaCache: "none" });
     registration.update();
   });
 }

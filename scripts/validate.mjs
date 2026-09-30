@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.14.0", "data.js?v=4.14.0", "app.js?v=4.14.0", "manifest.webmanifest?v=4.14.0"]) {
+for (const asset of ["styles.css?v=4.15.0", "data.js?v=4.15.0", "app.js?v=4.15.0", "manifest.webmanifest?v=4.15.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.14.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.15.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -62,5 +62,6 @@ if (!app.includes("Taşerona Malzeme") || !data.includes("materialProvision")) t
 if (!data.includes('procurement_admin') || !data.includes('purchase_requests') || !data.includes('supplier_quotes') || !data.includes('purchase_orders') || !data.includes('administrative_tasks')) throw new Error("Satınalma ve idari işler modülleri eksik.");
 if (!app.includes("openPurchaseRequestModal") || !app.includes("savePurchaseRequest") || !app.includes("saveSupplierQuote") || !app.includes("savePurchaseOrder") || !app.includes("saveAdministrativeTask")) throw new Error("Satınalma ve idari işler formları eksik.");
 if (!app.includes("syncPurchaseOrderReceipt") || !app.includes("purchaseOrderId") || !app.includes("alış ve depo girişi oluşturuldu")) throw new Error("Sipariş teslimi ile alış/ana depo bağlantısı eksik.");
+if (!app.includes("nav-group-toggle") || !app.includes("closeNavMenus") || !html.includes('aria-label="Üst ana menü"')) throw new Error("Üst ana sekme ve açılır menü yapısı eksik.");
 
 console.log("Yapı360 doğrulaması başarılı: JS, PWA, DOM ve demo temizliği.");
