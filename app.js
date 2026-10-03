@@ -16,12 +16,19 @@ const UNIQUE_NAME_PAGES = new Set(["contacts", "projects", "contracts", "sites",
 const STAFF_DOCUMENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
 const MAX_STAFF_DOCUMENT_BYTES = 1500000;
 const MAX_STAFF_DOCUMENT_TOTAL_BYTES = 2500000;
+const PROGRESS_WORK_GROUPS = [
+  "Kaba İşler · Hafriyat / Dolgu", "Kaba İşler · Beton", "Kaba İşler · Demir", "Kaba İşler · Kalıp", "Kaba İşler · Duvar", "Kaba İşler · Çatı",
+  "İnce İşler · Sıva / Boya", "İnce İşler · Cephe / Mantolama", "İnce İşler · Zemin / Kaplama",
+  "Mekanik Tesisat", "Elektrik Tesisat", "Altyapı & Çevre", "İlave İşler", "Diğer"
+];
+const PROGRESS_UNITS = ["m³", "m²", "m", "kg", "ton", "adet", "set", "gün", "götürü"];
+const PROGRESS_DEDUCTION_TYPES = ["KDV Tevkifatı", "Stopaj", "Kesin Teminat", "Nakdi Teminat", "Avans", "Malzeme", "Tutanak / Ceza", "Konaklama", "Yemek", "Asgari / Maaş", "SGK / İşçilik", "Taşeron Adına Ödeme", "Diğer"];
 const REFERENCE_FIELDS = {
   contacts: { contracts: ["party"], subcontractors: ["name"], progress: ["subcontractor"], purchases: ["supplier"], sales: ["customer"], checks: ["party"], inventory: ["supplier"], warehouse: ["sourceName", "subcontractor"], supplier_quotes: ["supplier"], purchase_orders: ["supplier"] },
   projects: { contracts: ["project"], sites: ["project"], subcontractors: ["project"], progress: ["project"], purchases: ["project"], sales: ["project"], warehouse: ["project"], staff_assignments: ["project"], timesheets: ["project"], purchase_requests: ["project"], supplier_quotes: ["project"], purchase_orders: ["project"], administrative_tasks: ["project"] },
-  sites: { assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"], purchase_requests: ["site"], supplier_quotes: ["site"], purchase_orders: ["site"], administrative_tasks: ["site"] },
+  sites: { progress: ["site"], assets: ["site"], warehouse: ["site"], staff_assignments: ["site"], timesheets: ["site"], purchase_requests: ["site"], supplier_quotes: ["site"], purchase_orders: ["site"], administrative_tasks: ["site"] },
   staff: { sites: ["manager"], assets: ["assignedTo"], warehouse: ["dispatchedBy"], staff_assignments: ["staffName"], purchase_requests: ["requestedBy"], administrative_tasks: ["responsible"] },
-  contracts: { subcontractors: ["contract"] },
+  contracts: { subcontractors: ["contract"], progress: ["contractName"] },
   inventory: { purchases: ["item"], warehouse: ["itemName"], purchase_requests: ["itemName"], supplier_quotes: ["itemName"], purchase_orders: ["itemName"] },
   subcontractors: { warehouse: ["subcontractor"] },
   bank_accounts: { cash: ["accountName"] }
@@ -304,7 +311,7 @@ function dashboardMetrics() {
     .filter(item => activeContractIds.has(item.contractId) || activeContractNames.has(item.contract))
     .reduce((sum, item) => sum + number(item.contractAmount), 0);
   const approvedProgress = records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status));
-  const totalProgress = approvedProgress.reduce((sum, item) => sum + number(item.amount), 0);
+  const totalProgress = approvedProgress.reduce((sum, item) => sum + number(item.grossAmount || item.amount), 0);
   const stockValue = records("inventory").filter(item => item.type === "Malzeme").reduce((sum, item) => {
     const purchases = records("purchases").filter(purchase => purchase.item === item.name && number(purchase.quantity) > 0);
     const purchasedQuantity = purchases.reduce((total, purchase) => total + number(purchase.quantity), 0);
@@ -409,7 +416,7 @@ function renderList(section, sourceRows) {
   const addLabels = { warehouse: "+ Yeni Sevkiyat", purchase_requests: "+ Yeni Talep", supplier_quotes: "+ Yeni Teklif", purchase_orders: "+ Yeni Sipariş", administrative_tasks: "+ Yeni İdari İş" };
   return `
     ${state.page === "cash" ? '<div class="callout">Ödeme, tahsilat, maaş ve avans hareketlerinde Nakit Kasa veya aktif banka hesabı seçilir. Dekont ve ciro hareketleri cari sonucu etkiler ancak kasa/banka bakiyesini değiştirmez.</div>' : ""}
-    ${state.page === "progress" ? '<div class="callout">Onaylanan hakediş taşeron carinin alacağına ve firma borcuna yansır. Hakediş ödemesini Kasa & Finans Hareketleri üzerinden aynı cariye “Ödeme” olarak kaydedin.</div>' : ""}
+    ${state.page === "progress" ? '<div class="callout">Demir, kalıp, beton, duvar gibi kaba işler ile ince işler ve tesisat kalemleri metraj–birim fiyat esasına göre hesaplanır. Onaylanan net hakediş taşeron carinin alacağına ve firma borcuna yansır.</div>' : ""}
     ${state.page === "staff" ? '<div class="callout">Personel kartı iletişim, adres, fotoğraf ve özlük evraklarını tutar. Avans yalnızca Kasa & Finans Hareketleri üzerinden kaydedilir; çalışma yeri Personel Görevlendirme sekmesinden yönetilir.</div>' : ""}
     ${state.page === "warehouse" ? '<div class="callout">Malzeme alışları ana depoya otomatik giriş oluşturur. Yeni sevkiyatlarda önce proje, ardından o projeye bağlı şantiye ve sevk eden personel seçilir.</div>' : ""}
     ${state.page === "purchase_requests" ? '<div class="callout">Talep; proje, projeye bağlı şantiye, talep eden personel ve tanımlı stok/hizmet kartıyla oluşturulur.</div>' : ""}
@@ -471,6 +478,11 @@ function formatCell(field, value, row) {
     const documents = Array.isArray(row.documents) ? row.documents : [];
     return `<span class="badge ${documents.length ? "" : "warning"}">${documents.length} dosya</span>`;
   }
+  if (field.type === "progressItems") {
+    const items = Array.isArray(value) ? value : [];
+    const groups = [...new Set(items.map(item => item.workGroup).filter(Boolean))];
+    return `<strong>${items.length} kalem</strong><small class="cell-note">${escapeHtml(groups.slice(0, 2).join(", ") || "Geçmiş kayıt")}${groups.length > 2 ? ` +${groups.length - 2}` : ""}</small>`;
+  }
   if (field.name === "balance") return `<strong class="${number(value) > 0 ? "metric-negative" : number(value) < 0 ? "metric-positive" : ""}">${escapeHtml(ledgerBalanceText(value))}</strong>`;
   if (field.type === "number") return moneyField(field.name) ? money.format(number(value)) : escapeHtml(value ?? "0");
   if (field.type === "date") return formatDate(value);
@@ -482,7 +494,7 @@ function formatCell(field, value, row) {
 }
 
 function moneyField(name) {
-  return ["budget", "contractAmount", "paid", "paidAmount", "amount", "total", "collected", "openingBalance", "currentBalance", "monthlySalary"].includes(name);
+  return ["budget", "contractAmount", "paid", "paidAmount", "amount", "grossAmount", "vatAmount", "grossWithVat", "deductionAmount", "netPayable", "total", "collected", "openingBalance", "currentBalance", "monthlySalary"].includes(name);
 }
 
 function contactSummary() {
@@ -974,7 +986,7 @@ function renderSettings() {
         <div class="field"><label>Firma adı</label><input class="input" name="name" value="${escapeHtml(company.name)}" required></div>
         <div class="field"><label>Bildirim e-postası</label><input class="input" name="email" type="email" value="${escapeHtml(company.email)}" required></div>
         <div class="field"><label>Para birimi</label><select class="select" name="currency"><option value="TRY" ${company.currency === "TRY" ? "selected" : ""}>TRY — Türk Lirası</option><option value="USD" ${company.currency === "USD" ? "selected" : ""}>USD — ABD Doları</option><option value="EUR" ${company.currency === "EUR" ? "selected" : ""}>EUR — Euro</option></select></div>
-        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.15.0" disabled></div>
+        <div class="field"><label>Çalışma alanı sürümü</label><input class="input" value="4.16.0" disabled></div>
       </div>
       ${canEdit() ? '<button class="btn" type="submit">Firma Bilgilerini Kaydet</button>' : ""}
     </form>
@@ -1316,6 +1328,103 @@ function progressDocumentBytes(draft = state.progressDraft) {
   return (draft?.documents || []).reduce((sum, file) => sum + number(file.size), 0);
 }
 
+function progressWorkItem(overrides = {}) {
+  return {
+    id: overrides.id || uid(), workGroup: overrides.workGroup || "Kaba İşler · Demir", positionCode: overrides.positionCode || "",
+    description: overrides.description || "", unit: overrides.unit || "kg", contractQuantity: number(overrides.contractQuantity),
+    previousQuantity: number(overrides.previousQuantity), currentQuantity: number(overrides.currentQuantity), unitPrice: number(overrides.unitPrice)
+  };
+}
+
+function progressDeduction(overrides = {}) {
+  const type = overrides.type || "KDV Tevkifatı";
+  return {
+    id: overrides.id || uid(), type, description: overrides.description || "",
+    calculationBase: overrides.calculationBase || (type === "KDV Tevkifatı" ? "vat" : type === "Stopaj" ? "gross" : "fixed"),
+    rate: number(overrides.rate), manualAmount: number(overrides.manualAmount ?? overrides.amount)
+  };
+}
+
+function normalizedProgressItems(row) {
+  if (Array.isArray(row.items) && row.items.length) return row.items.map(progressWorkItem);
+  if (number(row.grossAmount || row.amount) > 0) {
+    return [progressWorkItem({ workGroup: "Diğer", description: "Geçmiş hakediş toplamı", unit: "götürü", contractQuantity: 1, currentQuantity: 1, unitPrice: number(row.grossAmount || row.amount) })];
+  }
+  return [progressWorkItem()];
+}
+
+function progressItemKey(item) {
+  const position = String(item.positionCode || "").trim().toLocaleLowerCase("tr");
+  if (position) return "position:" + position;
+  return [item.workGroup, item.description, item.unit].map(value => String(value || "").trim().toLocaleLowerCase("tr")).join("|");
+}
+
+function progressPreviousQuantity(item) {
+  if (!state.progressDraft) return 0;
+  if (!String(item.description || "").trim()) return 0;
+  const key = progressItemKey(item);
+  if (!key || key.endsWith("||")) return 0;
+  return records("progress").filter(row => {
+    if (row.id === state.editId || !["Onaylandı", "Ödendi"].includes(row.status)) return false;
+    if (row.subcontractor !== state.progressDraft.subcontractor || row.project !== state.progressDraft.project) return false;
+    if (state.progressDraft.contractId && row.contractId && row.contractId !== state.progressDraft.contractId) return false;
+    if (state.progressDraft.periodEnd && row.periodEnd && row.periodEnd > state.progressDraft.periodEnd) return false;
+    return true;
+  }).flatMap(row => Array.isArray(row.items) ? row.items : []).filter(previous => progressItemKey(previous) === key)
+    .reduce((sum, previous) => sum + number(previous.currentQuantity), 0);
+}
+
+function progressPreviousAmount(item) {
+  if (!state.progressDraft) return 0;
+  if (!String(item.description || "").trim()) return 0;
+  const key = progressItemKey(item);
+  if (!key || key.endsWith("||")) return 0;
+  return records("progress").filter(row => {
+    if (row.id === state.editId || !["Onaylandı", "Ödendi"].includes(row.status)) return false;
+    if (row.subcontractor !== state.progressDraft.subcontractor || row.project !== state.progressDraft.project) return false;
+    if (state.progressDraft.contractId && row.contractId && row.contractId !== state.progressDraft.contractId) return false;
+    if (state.progressDraft.periodEnd && row.periodEnd && row.periodEnd > state.progressDraft.periodEnd) return false;
+    return true;
+  }).flatMap(row => Array.isArray(row.items) ? row.items : []).filter(previous => progressItemKey(previous) === key)
+    .reduce((sum, previous) => sum + number(previous.currentAmount || number(previous.currentQuantity) * number(previous.unitPrice)), 0);
+}
+
+function progressTotals(draft = state.progressDraft) {
+  const items = (draft?.items || []).map(item => {
+    const previousQuantity = progressPreviousQuantity(item);
+    const previousAmount = progressPreviousAmount(item);
+    const currentAmount = number(item.currentQuantity) * number(item.unitPrice);
+    return { ...item, previousQuantity, previousAmount, cumulativeQuantity: previousQuantity + number(item.currentQuantity), currentAmount, cumulativeAmount: previousAmount + currentAmount };
+  });
+  const grossAmount = items.reduce((sum, item) => sum + item.currentAmount, 0);
+  const vatRate = number(draft?.vatRate);
+  const vatAmount = grossAmount * vatRate / 100;
+  const grossWithVat = grossAmount + vatAmount;
+  const deductions = (draft?.deductions || []).map(item => {
+    const base = item.calculationBase === "vat" ? vatAmount : item.calculationBase === "grossWithVat" ? grossWithVat : grossAmount;
+    const amount = item.calculationBase === "fixed" ? number(item.manualAmount) : base * number(item.rate) / 100;
+    return { ...item, amount };
+  });
+  const deductionAmount = deductions.reduce((sum, item) => sum + item.amount, 0);
+  return { items, deductions, grossAmount, vatRate, vatAmount, grossWithVat, deductionAmount, netPayable: grossWithVat - deductionAmount };
+}
+
+function progressOptions(values, selected) {
+  return values.map(value => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function progressContractOptions(contactName, projectName, selectedId = "") {
+  const contracts = records("contracts").filter(item => (!contactName || item.party === contactName) && (!projectName || item.project === projectName));
+  const legacy = selectedId && !contracts.some(item => item.id === selectedId) ? `<option value="${escapeHtml(selectedId)}" selected>Eski / uyumsuz sözleşme</option>` : "";
+  return `<option value="">Sözleşme bağlantısı yok</option>${legacy}${contracts.map(item => `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} · ${formatDate(item.startDate)} – ${formatDate(item.endDate)}</option>`).join("")}`;
+}
+
+function progressSiteOptions(projectName, selectedId = "") {
+  const sites = records("sites").filter(item => item.project === projectName);
+  const legacy = selectedId && !sites.some(item => item.id === selectedId) ? `<option value="${escapeHtml(selectedId)}" selected>Eski / uyumsuz şantiye</option>` : "";
+  return `<option value="">Şantiye bağlantısı yok</option>${legacy}${sites.map(item => `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}`;
+}
+
 function progressAttachmentCard(file, index) {
   return `<article class="staff-file-card"><span class="staff-file-icon">▤</span><div><strong>${escapeHtml(file.name)}</strong><small>${staffFileSize(file.size)}</small></div><button class="btn ghost small" type="button" data-progress-file-download="${index}">İndir</button><button class="btn danger small" type="button" data-progress-file-remove="${index}">Kaldır</button></article>`;
 }
@@ -1328,6 +1437,106 @@ function renderProgressDraftFiles() {
   if ($("#progressDocumentUsage")) $("#progressDocumentUsage").textContent = `${staffFileSize(progressDocumentBytes())} / ${staffFileSize(MAX_STAFF_DOCUMENT_TOTAL_BYTES)}`;
 }
 
+function renderProgressItems() {
+  const target = $("#progressItems");
+  if (!target || !state.progressDraft) return;
+  target.innerHTML = state.progressDraft.items.length ? state.progressDraft.items.map((item, index) => {
+    const previous = progressPreviousQuantity(item);
+    const previousAmount = progressPreviousAmount(item);
+    item.previousQuantity = previous;
+    const cumulative = previous + number(item.currentQuantity);
+    const currentAmount = number(item.currentQuantity) * number(item.unitPrice);
+    const remaining = number(item.contractQuantity) > 0 ? number(item.contractQuantity) - cumulative : null;
+    return `<article class="progress-line" data-progress-item-row="${index}">
+      <div class="field"><label>İş grubu</label><select class="select compact" data-progress-item-field="workGroup" data-progress-index="${index}">${progressOptions(PROGRESS_WORK_GROUPS, item.workGroup)}</select></div>
+      <div class="field"><label>Poz kodu</label><input class="input compact" data-progress-item-field="positionCode" data-progress-index="${index}" value="${escapeHtml(item.positionCode)}" placeholder="Örn. KBI-DEM-01"></div>
+      <div class="field progress-description"><label>İş kalemi açıklaması</label><input class="input compact" data-progress-item-field="description" data-progress-index="${index}" value="${escapeHtml(item.description)}" placeholder="Örn. Nervürlü betonarme demiri"></div>
+      <div class="field"><label>Birim</label><select class="select compact" data-progress-item-field="unit" data-progress-index="${index}">${progressOptions(PROGRESS_UNITS, item.unit)}</select></div>
+      <div class="field"><label>Sözleşme miktarı</label><input class="input compact" type="number" min="0" step="0.001" data-progress-item-field="contractQuantity" data-progress-index="${index}" value="${number(item.contractQuantity) || ""}"></div>
+      <div class="field"><label>Önceki miktar</label><input class="input compact progress-readonly" value="${previous}" readonly><small>Onaylı kayıtlardan</small></div>
+      <div class="field"><label>Bu dönem miktarı</label><input class="input compact" type="number" min="0" step="0.001" data-progress-item-field="currentQuantity" data-progress-index="${index}" value="${number(item.currentQuantity) || ""}"></div>
+      <div class="field"><label>Birim fiyat</label><input class="input compact" type="number" min="0" step="0.01" data-progress-item-field="unitPrice" data-progress-index="${index}" value="${number(item.unitPrice) || ""}"></div>
+      <div class="progress-line-result"><small>Bu dönem</small><strong data-progress-current-amount>${escapeHtml(money.format(currentAmount))}</strong><span data-progress-quantity-note>Kümülatif ${cumulative.toLocaleString("tr-TR")} ${escapeHtml(item.unit)}${remaining === null ? "" : ` · Kalan ${remaining.toLocaleString("tr-TR")}`}</span><span data-progress-amount-note>Önceki ${escapeHtml(money.format(previousAmount))} · Kümülatif ${escapeHtml(money.format(previousAmount + currentAmount))}</span></div>
+      <button class="btn danger small progress-remove" type="button" data-progress-item-remove="${index}" aria-label="İş kalemini kaldır">Kaldır</button>
+    </article>`;
+  }).join("") : '<span class="staff-file-empty">Hakediş için en az bir iş kalemi ekleyin.</span>';
+  renderProgressSummary();
+}
+
+function updateProgressItemRow(index) {
+  const item = state.progressDraft?.items[index];
+  const row = $(`[data-progress-item-row="${index}"]`);
+  if (!item || !row) return;
+  const previous = progressPreviousQuantity(item);
+  const previousAmount = progressPreviousAmount(item);
+  item.previousQuantity = previous;
+  const cumulative = previous + number(item.currentQuantity);
+  const remaining = number(item.contractQuantity) > 0 ? number(item.contractQuantity) - cumulative : null;
+  const previousInput = row.querySelector(".progress-readonly");
+  const amount = row.querySelector("[data-progress-current-amount]");
+  const note = row.querySelector("[data-progress-quantity-note]");
+  const amountNote = row.querySelector("[data-progress-amount-note]");
+  if (previousInput) previousInput.value = previous;
+  if (amount) amount.textContent = money.format(number(item.currentQuantity) * number(item.unitPrice));
+  if (note) note.textContent = `Kümülatif ${cumulative.toLocaleString("tr-TR")} ${item.unit}${remaining === null ? "" : ` · Kalan ${remaining.toLocaleString("tr-TR")}`}`;
+  if (amountNote) amountNote.textContent = `Önceki ${money.format(previousAmount)} · Kümülatif ${money.format(previousAmount + number(item.currentQuantity) * number(item.unitPrice))}`;
+}
+
+function renderProgressDeductions() {
+  const target = $("#progressDeductions");
+  if (!target || !state.progressDraft) return;
+  const totals = progressTotals();
+  target.innerHTML = state.progressDraft.deductions.length ? state.progressDraft.deductions.map((item, index) => {
+    const calculated = totals.deductions[index]?.amount || 0;
+    return `<article class="progress-deduction" data-progress-deduction-row="${index}">
+      <div class="field"><label>Kesinti türü</label><select class="select compact" data-progress-deduction-field="type" data-progress-index="${index}">${progressOptions(PROGRESS_DEDUCTION_TYPES, item.type)}</select></div>
+      <div class="field progress-description"><label>Açıklama</label><input class="input compact" data-progress-deduction-field="description" data-progress-index="${index}" value="${escapeHtml(item.description)}" placeholder="Tutanak, dönem veya belge no"></div>
+      <div class="field"><label>Hesaplama matrahı</label><select class="select compact" data-progress-deduction-field="calculationBase" data-progress-index="${index}"><option value="gross" ${item.calculationBase === "gross" ? "selected" : ""}>Brüt hakediş</option><option value="vat" ${item.calculationBase === "vat" ? "selected" : ""}>KDV tutarı</option><option value="grossWithVat" ${item.calculationBase === "grossWithVat" ? "selected" : ""}>KDV dahil</option><option value="fixed" ${item.calculationBase === "fixed" ? "selected" : ""}>Sabit tutar</option></select></div>
+      <div class="field"><label>Oran (%)</label><input class="input compact" type="number" min="0" step="0.01" data-progress-deduction-field="rate" data-progress-index="${index}" value="${number(item.rate) || ""}" ${item.calculationBase === "fixed" ? "disabled" : ""}></div>
+      <div class="field"><label>Kesinti tutarı</label><input class="input compact" type="number" min="0" step="0.01" data-progress-deduction-field="manualAmount" data-progress-index="${index}" value="${item.calculationBase === "fixed" ? number(item.manualAmount) || "" : calculated.toFixed(2)}" ${item.calculationBase === "fixed" ? "" : "readonly"}></div>
+      <button class="btn danger small progress-remove" type="button" data-progress-deduction-remove="${index}" aria-label="Kesintiyi kaldır">Kaldır</button>
+    </article>`;
+  }).join("") : '<span class="staff-file-empty">Kesinti yok. Gerekirse vergi, teminat, avans, malzeme veya tutanak kesintisi ekleyin.</span>';
+  renderProgressSummary();
+}
+
+function updateProgressDeductionRow(index) {
+  const item = state.progressDraft?.deductions[index];
+  const row = $(`[data-progress-deduction-row="${index}"]`);
+  if (!item || !row) return;
+  const calculated = progressTotals().deductions[index]?.amount || 0;
+  const amountInput = row.querySelector('[data-progress-deduction-field="manualAmount"]');
+  if (amountInput && item.calculationBase !== "fixed") amountInput.value = calculated.toFixed(2);
+}
+
+function renderProgressSummary() {
+  const target = $("#progressSummary");
+  if (!target || !state.progressDraft) return;
+  const totals = progressTotals();
+  target.innerHTML = `
+    <article><small>BU DÖNEM BRÜT</small><strong>${escapeHtml(money.format(totals.grossAmount))}</strong></article>
+    <article><small>KDV (%${totals.vatRate.toLocaleString("tr-TR")})</small><strong>${escapeHtml(money.format(totals.vatAmount))}</strong></article>
+    <article><small>TOPLAM KESİNTİ</small><strong class="metric-negative">${escapeHtml(money.format(totals.deductionAmount))}</strong></article>
+    <article><small>NET ÖDENECEK</small><strong class="${totals.netPayable < 0 ? "metric-negative" : "metric-positive"}">${escapeHtml(money.format(totals.netPayable))}</strong></article>`;
+}
+
+function updateProgressRelations() {
+  if (!state.progressDraft) return;
+  const subcontractor = $("#field-subcontractor")?.value || "";
+  const project = $("#field-project")?.value || "";
+  const contract = $("#field-contractId");
+  const site = $("#field-siteId");
+  const selectedContract = contract?.value || state.progressDraft.contractId || "";
+  const selectedSite = site?.value || state.progressDraft.siteId || "";
+  if (contract) contract.innerHTML = progressContractOptions(subcontractor, project, selectedContract);
+  if (site) site.innerHTML = progressSiteOptions(project, selectedSite);
+  state.progressDraft.subcontractor = subcontractor;
+  state.progressDraft.project = project;
+  state.progressDraft.contractId = contract?.value || "";
+  state.progressDraft.siteId = site?.value || "";
+  state.progressDraft.periodEnd = $("#field-periodEnd")?.value || "";
+}
+
 function bindProgressForm() {
   bindStaffFileInput("#progressFiles", async files => {
     const additions = await Promise.all(files.map(createStaffDocument));
@@ -1338,6 +1547,14 @@ function bindProgressForm() {
   $("#recordFields").onclick = event => {
     const download = event.target.closest("[data-progress-file-download]");
     const remove = event.target.closest("[data-progress-file-remove]");
+    const addItem = event.target.closest("#addProgressItem");
+    const removeItem = event.target.closest("[data-progress-item-remove]");
+    const addDeduction = event.target.closest("#addProgressDeduction");
+    const removeDeduction = event.target.closest("[data-progress-deduction-remove]");
+    if (addItem) { state.progressDraft.items.push(progressWorkItem()); renderProgressItems(); }
+    if (removeItem) { state.progressDraft.items.splice(number(removeItem.dataset.progressItemRemove), 1); renderProgressItems(); }
+    if (addDeduction) { state.progressDraft.deductions.push(progressDeduction()); renderProgressDeductions(); }
+    if (removeDeduction) { state.progressDraft.deductions.splice(number(removeDeduction.dataset.progressDeductionRemove), 1); renderProgressDeductions(); }
     if (download) {
       const file = state.progressDraft.documents[number(download.dataset.progressFileDownload)];
       if (file?.dataUrl) {
@@ -1352,6 +1569,45 @@ function bindProgressForm() {
       renderProgressDraftFiles();
     }
   };
+  $("#recordFields").oninput = event => {
+    const itemInput = event.target.closest("[data-progress-item-field]");
+    const deductionInput = event.target.closest("[data-progress-deduction-field]");
+    if (itemInput) {
+      const item = state.progressDraft.items[number(itemInput.dataset.progressIndex)];
+      if (item) item[itemInput.dataset.progressItemField] = itemInput.type === "number" ? number(itemInput.value) : itemInput.value;
+      renderProgressSummary();
+      updateProgressItemRow(number(itemInput.dataset.progressIndex));
+    }
+    if (deductionInput) {
+      const item = state.progressDraft.deductions[number(deductionInput.dataset.progressIndex)];
+      if (item) item[deductionInput.dataset.progressDeductionField] = deductionInput.type === "number" ? number(deductionInput.value) : deductionInput.value;
+      renderProgressSummary();
+      updateProgressDeductionRow(number(deductionInput.dataset.progressIndex));
+    }
+    if (event.target.id === "field-vatRate") { state.progressDraft.vatRate = number(event.target.value); renderProgressSummary(); }
+  };
+  $("#recordFields").onchange = event => {
+    if (["field-subcontractor", "field-project", "field-contractId", "field-siteId", "field-periodEnd"].includes(event.target.id)) {
+      if (["field-subcontractor", "field-project"].includes(event.target.id)) {
+        state.progressDraft.contractId = "";
+        if (event.target.id === "field-project") state.progressDraft.siteId = "";
+      }
+      updateProgressRelations();
+      renderProgressItems();
+    }
+    if (event.target.matches("[data-progress-item-field]")) updateProgressItemRow(number(event.target.dataset.progressIndex));
+    if (event.target.matches("[data-progress-deduction-field]")) {
+      const item = state.progressDraft.deductions[number(event.target.dataset.progressIndex)];
+      if (item && event.target.dataset.progressDeductionField === "type") {
+        item.calculationBase = item.type === "KDV Tevkifatı" ? "vat" : item.type === "Stopaj" ? "gross" : "fixed";
+        renderProgressDeductions();
+      } else if (event.target.dataset.progressDeductionField === "calculationBase") renderProgressDeductions();
+      else updateProgressDeductionRow(number(event.target.dataset.progressIndex));
+    }
+  };
+  updateProgressRelations();
+  renderProgressItems();
+  renderProgressDeductions();
   renderProgressDraftFiles();
 }
 
@@ -1370,15 +1626,29 @@ function openProgressModal(id = null) {
   const subcontractors = records("contacts").filter(item => item.type === "Taşeron");
   const projects = records("projects");
   state.editId = id;
-  state.progressDraft = { documents: Array.isArray(row.documents) ? [...row.documents] : [] };
-  $("#recordModal").classList.add("contract-modal");
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = today.slice(0, 8) + "01";
+  state.progressDraft = {
+    documents: Array.isArray(row.documents) ? [...row.documents] : [], items: normalizedProgressItems(row),
+    deductions: Array.isArray(row.deductions) ? row.deductions.map(progressDeduction) : [], vatRate: row.id ? number(row.vatRate ?? 0) : 20,
+    subcontractor: row.subcontractor || "", project: row.project || "", contractId: row.contractId || "", siteId: row.siteId || "",
+    periodEnd: row.periodEnd || row.date || today
+  };
+  $("#recordModal").classList.add("progress-modal");
   $("#modalTitle").textContent = "Hakediş" + (id ? " — Düzenle" : " — Yeni Kayıt");
   $("#recordFields").innerHTML = `
     <div class="field"><label for="field-number">Hakediş no</label><input class="input" id="field-number" name="number" value="${escapeHtml(row.number || nextProgressNumber())}" readonly required><small class="field-note">Sistem tarafından otomatik verilir.</small></div>
     <div class="field"><label for="field-subcontractor">Taşeron / cari</label><select class="select" id="field-subcontractor" name="subcontractor" required>${namedRelationOptions(subcontractors, row.subcontractor || "", "Önce Taşeron türünde cari tanımlayın")}</select></div>
     <div class="field"><label for="field-project">Proje</label><select class="select" id="field-project" name="project" required>${namedRelationOptions(projects, row.project || "", "Önce proje tanımlayın")}</select></div>
-    <div class="field"><label for="field-amount">Tutar</label><input class="input" id="field-amount" name="amount" type="number" min="0.01" step="0.01" value="${escapeHtml(row.amount || "")}" required></div>
+    <div class="field"><label for="field-siteId">Şantiye</label><select class="select" id="field-siteId" name="siteId">${progressSiteOptions(row.project || "", row.siteId || "")}</select></div>
+    <div class="field"><label for="field-contractId">Bağlı sözleşme</label><select class="select" id="field-contractId" name="contractId">${progressContractOptions(row.subcontractor || "", row.project || "", row.contractId || "")}</select></div>
+    <div class="field"><label for="field-periodStart">Dönem başlangıcı</label><input class="input" id="field-periodStart" name="periodStart" type="date" value="${escapeHtml(row.periodStart || monthStart)}" required></div>
+    <div class="field"><label for="field-periodEnd">Dönem sonu / hakediş tarihi</label><input class="input" id="field-periodEnd" name="periodEnd" type="date" value="${escapeHtml(row.periodEnd || row.date || today)}" required></div>
+    <div class="field"><label for="field-vatRate">KDV oranı (%)</label><input class="input" id="field-vatRate" name="vatRate" type="number" min="0" max="100" step="0.01" value="${state.progressDraft.vatRate}" required></div>
     <div class="field"><label for="field-status">Durum</label><select class="select" id="field-status" name="status" required>${["Taslak", "Onay Bekliyor", "Onaylandı"].map(status => `<option ${status === (row.status || "Taslak") ? "selected" : ""}>${status}</option>`).join("")}${row.status === "Ödendi" ? '<option selected>Ödendi</option>' : ""}</select><small class="field-note">Ödendi durumu, bağlı hakedişin kasa ödemesi tamamlandığında otomatik verilir.</small></div>
+    <section class="progress-editor full-field"><div class="staff-section-head"><div><strong>Hakediş İş Kalemleri</strong><small>Kaba işler, ince işler ve tesisat kalemlerini poz, metraj ve birim fiyatla kaydedin. Önceki miktar onaylı hakedişlerden otomatik gelir.</small></div><button class="btn gold small" id="addProgressItem" type="button">+ İş Kalemi Ekle</button></div><div id="progressItems" class="progress-lines"></div></section>
+    <section class="progress-editor full-field"><div class="staff-section-head"><div><strong>Kesintiler</strong><small>Vergi, teminat, avans, malzeme, tutanak ve diğer kesintileri matrah veya sabit tutarla hesaplayın.</small></div><button class="btn ghost small" id="addProgressDeduction" type="button">+ Kesinti Ekle</button></div><div id="progressDeductions" class="progress-deductions"></div></section>
+    <section class="progress-summary full-field" id="progressSummary"></section>
     <section class="staff-document-section full-field"><div class="staff-section-head"><div><strong>Hakediş Dosyaları</strong><small>Hakediş raporu, metraj, icmal, tutanak ve Excel eklerini yükleyebilirsiniz. Dosya başına en fazla ${staffFileSize(MAX_STAFF_DOCUMENT_BYTES)}.</small></div><label class="btn ghost small" for="progressFiles">Dosya Ekle</label><input id="progressFiles" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx" multiple hidden></div><div id="progressDocuments" class="staff-file-list"></div><small class="staff-storage-note">Dosya kullanımı: <strong id="progressDocumentUsage"></strong></small></section>`;
   bindProgressForm();
   $("#recordModal").classList.add("open");
@@ -1975,25 +2245,57 @@ function saveProgressRecord(data) {
   const target = state.db.records.progress ||= [];
   let row = target.find(item => item.id === state.editId);
   const wasEdit = Boolean(row);
-  const previousRow = row ? { ...row, documents: [...(row.documents || [])] } : null;
+  const previousRow = row ? { ...row, documents: [...(row.documents || [])], items: [...(row.items || [])], deductions: [...(row.deductions || [])] } : null;
   const progressNumber = row?.number || nextProgressNumber();
   const contact = records("contacts").find(item => item.name === data.subcontractor && item.type === "Taşeron");
   const project = records("projects").find(item => item.name === data.project);
+  const site = data.siteId ? records("sites").find(item => item.id === data.siteId && item.project === project?.name) : null;
+  const contract = data.contractId ? records("contracts").find(item => item.id === data.contractId && item.party === contact?.name && item.project === project?.name) : null;
   const paidAmount = number(row?.paidAmount);
-  const amount = number(data.amount);
   if (!contact) return toast("Hakediş için Taşeron türünde tanımlı bir cari seçmelisiniz.");
   if (!project) return toast("Hakediş için tanımlı bir proje seçmelisiniz.");
+  if (data.siteId && !site) return toast("Seçilen şantiye bu projeye bağlı değil.");
+  if (data.contractId && !contract) return toast("Seçilen sözleşme bu taşeron ve projeyle eşleşmiyor.");
+  if (!data.periodStart || !data.periodEnd || data.periodEnd < data.periodStart) return toast("Hakediş dönem başlangıç ve bitiş tarihlerini doğru girin.");
   if (target.some(item => item.id !== state.editId && String(item.number).toLocaleLowerCase("tr") === progressNumber.toLocaleLowerCase("tr"))) return toast("Bu hakediş numarası daha önce kullanılmış.");
-  if (amount <= 0) return toast("Hakediş tutarı sıfırdan büyük olmalıdır.");
-  if (paidAmount > amount) return toast("Hakediş tutarı daha önce ödenen tutardan düşük olamaz.");
+  if (!state.progressDraft.items.length) return toast("Hakediş için en az bir iş kalemi ekleyin.");
+  updateProgressRelations();
+  const totals = progressTotals();
+  const invalidItem = totals.items.find(item => !item.description.trim() || number(item.currentQuantity) <= 0 || number(item.unitPrice) <= 0);
+  if (invalidItem) return toast("Her iş kaleminde açıklama, sıfırdan büyük bu dönem miktarı ve birim fiyat olmalıdır.");
+  const duplicateKeys = totals.items.map(progressItemKey);
+  if (new Set(duplicateKeys).size !== duplicateKeys.length) return toast("Aynı poz veya aynı iş kalemi hakedişte iki kez kullanılamaz.");
+  const exceeded = totals.items.find(item => number(item.contractQuantity) > 0 && number(item.cumulativeQuantity) > number(item.contractQuantity) + 0.000001);
+  if (exceeded) return toast(`${exceeded.description} kaleminde kümülatif miktar sözleşme miktarını aşıyor.`);
+  if (totals.grossAmount <= 0) return toast("Hakediş brüt tutarı sıfırdan büyük olmalıdır.");
+  if (totals.deductions.some(item => item.amount < 0 || number(item.rate) < 0 || number(item.rate) > 100)) return toast("Kesinti tutarları pozitif, oranlar 0–100 arasında olmalıdır.");
+  if (["Onaylandı", "Ödendi"].includes(data.status) && totals.netPayable <= 0) return toast("Net ödenecek tutarı sıfır veya negatif olan hakediş onaylanamaz; taslak olarak kaydedin.");
+  if (paidAmount > totals.netPayable) return toast("Net ödenecek tutar daha önce ödenen tutardan düşük olamaz.");
   if (progressDocumentBytes() > MAX_STAFF_DOCUMENT_TOTAL_BYTES) return toast("Hakediş dosyalarının toplam boyutu sınırı aşıyor.");
+  const status = paidAmount >= totals.netPayable && paidAmount > 0 ? "Ödendi" : paidAmount > 0 ? "Onaylandı" : data.status;
   const progress = {
     number: progressNumber,
     subcontractor: contact.name,
     project: project.name,
-    amount: data.amount,
+    siteId: site?.id || "",
+    site: site?.name || "",
+    contractId: contract?.id || "",
+    contractName: contract?.name || "",
+    periodStart: data.periodStart,
+    periodEnd: data.periodEnd,
+    date: data.periodEnd,
+    vatRate: totals.vatRate,
+    grossAmount: totals.grossAmount,
+    vatAmount: totals.vatAmount,
+    grossWithVat: totals.grossWithVat,
+    deductionAmount: totals.deductionAmount,
+    netPayable: totals.netPayable,
+    amount: totals.netPayable,
     paidAmount,
-    status: paidAmount >= amount && paidAmount > 0 ? "Ödendi" : paidAmount > 0 ? "Onaylandı" : data.status,
+    status,
+    approvedAt: ["Onaylandı", "Ödendi"].includes(status) ? row?.approvedAt || new Date().toISOString() : "",
+    items: totals.items,
+    deductions: totals.deductions,
     documents: state.progressDraft.documents,
     updatedAt: new Date().toISOString()
   };
@@ -2644,8 +2946,12 @@ function closeModal() {
   $("#recordModal").classList.remove("open");
   $("#recordModal").classList.remove("staff-modal");
   $("#recordModal").classList.remove("contract-modal");
+  $("#recordModal").classList.remove("progress-modal");
   $("#recordFields").onclick = null;
+  $("#recordFields").oninput = null;
+  $("#recordFields").onchange = null;
   $("#recordForm").reset();
+  $("#recordForm").scrollTop = 0;
   state.editId = null;
   state.staffDraft = null;
   state.contractDraft = null;
@@ -2668,6 +2974,7 @@ function exportCsv() {
   const exportValue = (field, row) => {
     if (field.type === "staffPhoto") return row.photo?.name || "";
     if (["staffDocuments", "contractDocuments", "progressDocuments"].includes(field.type)) return [row.entryDocument?.name, row.exitDocument?.name, ...(row.documents || []).map(file => file.name)].filter(Boolean).join(" | ");
+    if (field.type === "progressItems") return (row.items || []).map(item => [item.workGroup, item.positionCode, item.description, `${item.currentQuantity} ${item.unit}`].filter(Boolean).join(" · ")).join(" | ");
     if (field.name === "balance") return ledgerBalanceText(row.balance);
     return row[field.name] ?? "";
   };
@@ -2801,7 +3108,7 @@ window.addEventListener("hashchange", () => { if (state.user) navigate(location.
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
-    const registration = await navigator.serviceWorker.register("./sw.js?v=4.15.0", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("./sw.js?v=4.16.0", { updateViaCache: "none" });
     registration.update();
   });
 }
