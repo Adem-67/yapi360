@@ -1,4 +1,4 @@
-# Yapı360 v4.16
+# Yapı360 v4.17
 
 İnşaat firmaları için proje, şantiye, finans, cari, stok, personel ve satış süreçlerini ilişkilendiren PWA çalışma alanı.
 
