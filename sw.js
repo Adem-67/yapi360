@@ -1,12 +1,12 @@
-const CACHE_NAME = "yapi360-v4.15.0";
+const CACHE_NAME = "yapi360-v4.16.0";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=4.15.0",
-  "./data.js?v=4.15.0",
-  "./app.js?v=4.15.0",
-  "./manifest.webmanifest?v=4.15.0",
-  "./icon.svg?v=4.15.0"
+  "./styles.css?v=4.16.0",
+  "./data.js?v=4.16.0",
+  "./app.js?v=4.16.0",
+  "./manifest.webmanifest?v=4.16.0",
+  "./icon.svg?v=4.16.0"
 ];
 
 self.addEventListener("install", event => {

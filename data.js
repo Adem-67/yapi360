@@ -29,8 +29,8 @@ window.YAPI360_SECTIONS = {
     fields: [f("name", "Firma / cari", "relation", { source: "contacts" }), f("contract", "Sözleşme"), f("specialty", "Uzmanlık"), f("project", "Proje", "relation", { source: "projects" }), f("materialProvision", "Malzeme sorumluluğu", "select", { options: ["Taşeron Sağlar", "Firma Sağlar"] }), f("contractAmount", "Sözleşme tutarı", "number"), f("paid", "Ödenen", "number")]
   },
   progress: {
-    title: "Hakedişler", icon: "₺", description: "Dosyalarıyla birlikte hakediş hazırlama, onay ve ödeme akışı.", specialForm: "progress",
-    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("amount", "Tutar", "number"), f("paidAmount", "Ödenen", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
+    title: "Hakedişler", icon: "₺", description: "Kaba ve ince iş metrajları, kesintiler, onay ve ödeme bağlantılarıyla dönemsel hakediş yönetimi.", specialForm: "progress",
+    fields: [f("number", "Hakediş no"), f("subcontractor", "Taşeron / cari", "relation", { source: "contacts" }), f("project", "Proje", "relation", { source: "projects" }), f("site", "Şantiye"), f("periodEnd", "Dönem sonu", "date"), f("items", "İş kalemleri", "progressItems"), f("grossAmount", "Brüt hakediş", "number"), f("deductionAmount", "Kesintiler", "number"), f("amount", "Net ödenecek", "number"), f("paidAmount", "Ödenen", "number"), f("status", "Durum", "select", { options: ["Taslak", "Onay Bekliyor", "Onaylandı", "Ödendi"] }), f("documents", "Dosyalar", "progressDocuments")]
   },
   procurement_admin: { title: "Satınalma & İdari İşler", icon: "◫", description: "Talep, teklif, sipariş, teslim alma ve idari görev süreçlerinin bağlantılı çalışma alanı.", special: "procurementDashboard" },
   purchase_requests: {

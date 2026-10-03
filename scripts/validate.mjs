@@ -20,10 +20,10 @@ for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Eksik DOM kimliği: ${id}`);
 }
 
-for (const asset of ["styles.css?v=4.15.0", "data.js?v=4.15.0", "app.js?v=4.15.0", "manifest.webmanifest?v=4.15.0"]) {
+for (const asset of ["styles.css?v=4.16.0", "data.js?v=4.16.0", "app.js?v=4.16.0", "manifest.webmanifest?v=4.16.0"]) {
   if (!html.includes(asset)) throw new Error(`Eksik sürümlü varlık: ${asset}`);
 }
-if (!sw.includes('yapi360-v4.15.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
+if (!sw.includes('yapi360-v4.16.0')) throw new Error("Servis çalışanı önbellek sürümü güncel değil.");
 
 if (manifest.start_url !== "./" || manifest.scope !== "./") throw new Error("PWA kapsamı GitHub Pages alt diziniyle uyumlu değil.");
 if (!app.includes('$$("[data-go]")')) throw new Error("Dashboard yönlendirme seçicisi çoğul değil.");
@@ -40,6 +40,13 @@ if (!data.includes('f("setupDate", "Şantiye kurulum tarihi", "date")') || !data
 if (data.includes('f("planned", "Planlanan (%)"') || data.includes('f("actual", "Gerçekleşen (%)"')) throw new Error("Şantiye kartında elle girilen ilerleme yüzdeleri kalmış.");
 if (!data.includes('specialForm: "contract"') || !app.includes("openContractModal") || !app.includes("saveContractRecord")) throw new Error("Sözleşme tarih ve dosya formu eksik.");
 if (!data.includes('specialForm: "progress"') || !data.includes('"progressDocuments"') || !app.includes("openProgressModal") || !app.includes("saveProgressRecord")) throw new Error("Hakediş dosya formu eksik.");
+for (const workGroup of ["Kaba İşler · Beton", "Kaba İşler · Demir", "Kaba İşler · Kalıp", "Kaba İşler · Duvar", "İnce İşler · Sıva / Boya", "Mekanik Tesisat", "Elektrik Tesisat"]) {
+  if (!app.includes(`"${workGroup}"`)) throw new Error(`Hakediş iş grubu eksik: ${workGroup}`);
+}
+if (!app.includes("progressPreviousQuantity") || !app.includes("progressTotals") || !app.includes("contractQuantity") || !app.includes("deductionAmount") || !app.includes("netPayable")) throw new Error("Hakediş metraj, kümülatif miktar, kesinti veya net ödeme hesabı eksik.");
+for (const deduction of ["KDV Tevkifatı", "Stopaj", "Kesin Teminat", "Avans", "Malzeme", "Tutanak / Ceza", "SGK / İşçilik"]) {
+  if (!app.includes(`"${deduction}"`)) throw new Error(`Hakediş kesinti türü eksik: ${deduction}`);
+}
 if (!app.includes('records("progress").filter(item => ["Onaylandı", "Ödendi"].includes(item.status))')) throw new Error("Onaylı hakediş-cari alacak ilişkisi eksik.");
 if (!app.includes("nextProgressNumber") || !app.includes("Sistem tarafından otomatik verilir.")) throw new Error("Otomatik hakediş numarası eksik.");
 if (!app.includes('sourceType: "progress"') || !app.includes("Bağlı ${payment ? \"alış / hakediş\" : \"satış\"} kaydı") || !app.includes('source.status = source.paidAmount >= number(source.amount) ? "Ödendi" : "Onaylandı"')) throw new Error("Taşeron hakediş-kasa ödeme ilişkisi eksik.");
